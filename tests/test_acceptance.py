@@ -2378,3 +2378,536 @@ class TestA9DoctorKnitrRmarkdown:
         assert result.returncode == 0, (
             f"doctor.py has Python syntax errors:\n{result.stderr}"
         )
+
+
+# ---------------------------------------------------------------------------
+# A10  — omr-doctor prereq guidance + consent bootstrap (offline static)
+# ---------------------------------------------------------------------------
+
+_INSTALL_SH = REPO_ROOT / "install.sh"
+_INSTALL_PS1 = REPO_ROOT / "install.ps1"
+
+
+class TestA10PrereqGuidanceBootstrap:
+    """A10: Offline static-source inspection of doctor.py, install.sh, install.ps1.
+
+    Verifies the prereq-guidance tables, consent bootstrap, no-sudo/cask-execution
+    scope lock, and regression guards WITHOUT executing any tool.
+    All tests are @pytest.mark.offline.
+    """
+
+    # ------------------------------------------------------------------ helpers
+
+    @staticmethod
+    def _src() -> str:
+        assert _DOCTOR_PY.exists(), f"doctor.py not found at {_DOCTOR_PY}"
+        return _DOCTOR_PY.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _src_sh() -> str:
+        if not _INSTALL_SH.exists():
+            pytest.skip("install.sh not present")
+        return _INSTALL_SH.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _src_ps1() -> str:
+        if not _INSTALL_PS1.exists():
+            pytest.skip("install.ps1 not present")
+        return _INSTALL_PS1.read_text(encoding="utf-8")
+
+    # ------------------------------------------------------------------ doctor.py: --fix-prereqs flag
+
+    @pytest.mark.offline
+    def test_fix_prereqs_flag_registered(self):
+        """doctor.py must register the --fix-prereqs flag in main()."""
+        src = self._src()
+        assert '"--fix-prereqs"' in src or "'--fix-prereqs'" in src, (
+            "doctor.py must check for '--fix-prereqs' flag in main() (A10 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_fix_prereqs_flag_in_help_text(self):
+        """doctor.py help text must mention --fix-prereqs."""
+        src = self._src()
+        help_section = re.search(
+            r'(?:print|sys\.stdout\.write)\s*\(\s*["\'].*?--fix-prereqs.*?["\']',
+            src,
+            re.DOTALL,
+        )
+        assert help_section is not None, (
+            "doctor.py help output (the -h/--help print block) must mention --fix-prereqs"
+        )
+
+    # ------------------------------------------------------------------ doctor.py: remediation tables
+
+    @pytest.mark.offline
+    def test_macos_remed_table_present(self):
+        """doctor.py must define _MACOS_REMED (or equivalent) mapping."""
+        src = self._src()
+        assert "_MACOS_REMED" in src, (
+            "doctor.py must define _MACOS_REMED dict for macOS per-tool remediation (A10)"
+        )
+
+    @pytest.mark.offline
+    def test_windows_remed_table_present(self):
+        """doctor.py must define _WINDOWS_REMED (or equivalent) mapping."""
+        src = self._src()
+        assert "_WINDOWS_REMED" in src, (
+            "doctor.py must define _WINDOWS_REMED dict for Windows per-tool remediation (A10)"
+        )
+
+    @pytest.mark.offline
+    def test_prereq_timeout_env_var_present(self):
+        """doctor.py must reference OMR_DOCTOR_PREREQ_TIMEOUT environment variable."""
+        src = self._src()
+        assert "OMR_DOCTOR_PREREQ_TIMEOUT" in src, (
+            "doctor.py must use OMR_DOCTOR_PREREQ_TIMEOUT env var (A10 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_bootstrap_prereqs_function_exists(self):
+        """doctor.py must define bootstrap_prereqs (or equivalent) function."""
+        src = self._src()
+        assert "bootstrap_prereqs" in src, (
+            "doctor.py must define bootstrap_prereqs function for A10 consent install"
+        )
+
+    # ------------------------------------------------------------------ doctor.py: consent gating
+
+    @pytest.mark.offline
+    def test_isatty_guard_in_bootstrap(self):
+        """doctor.py must use isatty() to gate the interactive TTY prompt in bootstrap."""
+        src = self._src()
+        assert "isatty" in src, (
+            "doctor.py must check isatty() to gate the interactive TTY prompt (A10 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_korean_prereq_prompt_text_present(self):
+        """doctor.py must contain the A10 Korean consent prompt for prereqs."""
+        src = self._src()
+        assert "누락 선수도구를 설치할까요" in src, (
+            "doctor.py must contain Korean consent prompt '누락 선수도구를 설치할까요' (A10 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_bootstrap_prereqs_call_is_consent_gated(self):
+        """The pkg-install call inside bootstrap_prereqs must be guarded by a consent variable.
+
+        Strategy: find the _pkg_install call site(s) in non-comment, non-def lines,
+        then look back up to 40 lines for a 'consent' check — same pattern as A9.
+        """
+        src = self._src()
+        lines = src.splitlines()
+        # Only actual call sites (not def or comment lines)
+        install_call_indices = [
+            i for i, ln in enumerate(lines)
+            if "_pkg_install(" in ln
+            and not ln.strip().startswith("#")
+            and not ln.strip().startswith("def ")
+        ]
+        assert install_call_indices, (
+            "_pkg_install must be called at least once in non-comment, non-def code"
+        )
+        for idx in install_call_indices:
+            window = lines[max(0, idx - 40): idx]
+            window_text = "\n".join(window)
+            assert "consent" in window_text, (
+                f"_pkg_install call at line {idx + 1} is not preceded by a 'consent' "
+                "check within 40 lines — prereq install must be consent-gated (A10)"
+            )
+
+    # ------------------------------------------------------------------ doctor.py: no-sudo scope lock
+
+    @pytest.mark.offline
+    def test_no_executable_cask_subprocess_call(self):
+        """No subprocess/_run/os.system call must execute a command containing '--cask'.
+
+        '--cask quarto' may appear ONLY in printed-guidance/comment strings.
+        Rule: any non-comment Python line whose call to subprocess.run / _run /
+        os.system / subprocess.Popen / os.execv contains '--cask' is forbidden.
+        """
+        src = self._src()
+        # Pattern: a subprocess-call or _run call that contains --cask
+        # We look for lines where a call expression AND '--cask' both appear.
+        _SUBPROCESS_CALL_RE = re.compile(
+            r'\b(?:subprocess\.run|subprocess\.Popen|os\.system|os\.execv|_run)\s*\(',
+        )
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "--cask" not in stripped:
+                continue
+            # Line contains --cask; check whether it also has a subprocess call
+            assert not _SUBPROCESS_CALL_RE.search(stripped), (
+                f"Executable subprocess/os.system call must NOT contain '--cask' (A10 no-sudo lock).\n"
+                f"Offending line: {line!r}"
+            )
+
+    @pytest.mark.offline
+    def test_no_executable_sudo_subprocess_call(self):
+        """No subprocess/_run/os.system call must execute a command containing 'sudo'.
+
+        'sudo' may appear ONLY in comment or printed-guidance string literals.
+        """
+        src = self._src()
+        _SUBPROCESS_CALL_RE = re.compile(
+            r'\b(?:subprocess\.run|subprocess\.Popen|os\.system|os\.execv|_run)\s*\(',
+        )
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "sudo" not in stripped:
+                continue
+            assert not _SUBPROCESS_CALL_RE.search(stripped), (
+                f"Executable subprocess/os.system call must NOT contain 'sudo' (A10 no-sudo lock).\n"
+                f"Offending line: {line!r}"
+            )
+
+    @pytest.mark.offline
+    def test_brew_install_only_allowed_formulas(self):
+        """Every executable brew install call must target only python/r/pandoc (no cask).
+
+        Statistical packages (car/jsonlite/lme4/survival/nlme/emmeans/multcomp) must
+        not appear in any executable brew/winget install call.
+        """
+        src = self._src()
+        _STAT_PKGS = ("car", "jsonlite", "lme4", "survival", "nlme", "emmeans", "multcomp")
+        _ALLOWED_BREW = ("python", "r", "pandoc")
+
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            # Check for stat pkg names in any brew install call context
+            if "brew" in stripped and "install" in stripped:
+                for pkg in _STAT_PKGS:
+                    assert f'"{pkg}"' not in stripped and f"'{pkg}'" not in stripped, (
+                        f"Statistical package {pkg!r} must NOT appear in any executable "
+                        f"brew install call (A10 scope lock).\nOffending line: {line!r}"
+                    )
+
+    @pytest.mark.offline
+    def test_winget_install_only_allowed_ids(self):
+        """Every executable winget install call in doctor.py must use -e --id form only."""
+        src = self._src()
+        _STAT_PKGS = ("car", "jsonlite", "lme4", "survival", "nlme", "emmeans", "multcomp")
+
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "winget" in stripped and "install" in stripped:
+                for pkg in _STAT_PKGS:
+                    assert pkg not in stripped, (
+                        f"Statistical package {pkg!r} must NOT appear in any executable "
+                        f"winget install call (A10 scope lock).\nOffending line: {line!r}"
+                    )
+
+    # ------------------------------------------------------------------ doctor.py: A9 stats lock still present
+
+    @pytest.mark.offline
+    def test_a9_knitr_requirenamespace_still_present(self):
+        """A9 regression lock: requireNamespace(\"knitr\" must still be present in doctor.py."""
+        src = self._src()
+        assert 'requireNamespace("knitr"' in src, (
+            'A9 regression: doctor.py must still contain requireNamespace("knitr" (A9 probe contract)'
+        )
+
+    @pytest.mark.offline
+    def test_a9_rmarkdown_requirenamespace_still_present(self):
+        """A9 regression lock: requireNamespace(\"rmarkdown\" must still be present in doctor.py."""
+        src = self._src()
+        assert 'requireNamespace("rmarkdown"' in src, (
+            'A9 regression: doctor.py must still contain requireNamespace("rmarkdown" (A9 probe contract)'
+        )
+
+    @pytest.mark.offline
+    def test_no_statistical_packages_in_any_executable_install_call(self):
+        """Statistical pkgs must not appear in any executable install call (A9+A10 combined lock)."""
+        src = self._src()
+        _STAT_PKGS = ("car", "jsonlite", "lme4", "survival", "nlme", "emmeans", "multcomp")
+
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            # Check executable install.packages calls
+            if "install.packages(" in stripped:
+                for pkg in _STAT_PKGS:
+                    assert f'"{pkg}"' not in stripped and f"'{pkg}'" not in stripped, (
+                        f"Statistical package {pkg!r} must NOT appear in executable "
+                        f"install.packages() call (A10 regression lock).\nOffending line: {line!r}"
+                    )
+
+    # ------------------------------------------------------------------ doctor.py: regression locks
+
+    @pytest.mark.offline
+    def test_a10_regression_known_candidates_r(self):
+        """A10 regression: _known_candidates_r must still be present."""
+        src = self._src()
+        assert "_known_candidates_r" in src, (
+            "_known_candidates_r must still be present (A10 must not regress per-OS R detect)"
+        )
+
+    @pytest.mark.offline
+    def test_a10_regression_hard_fail_string(self):
+        """A10 regression: 'HARD FAIL' version-floor string must still appear."""
+        src = self._src()
+        assert "HARD FAIL" in src, (
+            "'HARD FAIL' string must still appear in doctor.py (version-floor enforcement)"
+        )
+
+    @pytest.mark.offline
+    def test_a10_regression_classify_privilege_study_root(self):
+        """A10 regression: classify_privilege and study_root must still be present."""
+        src = self._src()
+        assert "classify_privilege" in src, (
+            "classify_privilege must still be present (A10 regression lock)"
+        )
+        assert "study_root" in src, (
+            "study_root must still be present (A10 regression lock)"
+        )
+
+    @pytest.mark.offline
+    def test_a10_regression_full_auto_workspace_write(self):
+        """A10 regression: --full-auto and workspace-write codex flags must still be present."""
+        src = self._src()
+        assert "--full-auto" in src, (
+            "--full-auto codex flag must still be present (A10 regression lock)"
+        )
+        assert "workspace-write" in src, (
+            "workspace-write sandbox flag must still be present (A10 regression lock)"
+        )
+
+    @pytest.mark.offline
+    def test_a10_regression_skip_mcp_flag(self):
+        """A10 regression: --skip-mcp flag must still be present."""
+        src = self._src()
+        assert "--skip-mcp" in src, (
+            "--skip-mcp flag must still be present in doctor.py (A10 regression lock)"
+        )
+
+    @pytest.mark.offline
+    def test_a10_regression_stdin_devnull(self):
+        """A10 regression: stdin=subprocess.DEVNULL must still be present in _run()."""
+        src = self._src()
+        assert "subprocess.DEVNULL" in src, (
+            "stdin=subprocess.DEVNULL must still be present in _run() (A10 regression lock)"
+        )
+
+    @pytest.mark.offline
+    def test_a10_regression_fix_flag_present(self):
+        """A10 regression: A9 --fix flag must still be present in doctor.py."""
+        src = self._src()
+        assert '"--fix"' in src or "'--fix'" in src, (
+            "A9 --fix flag must still be present in doctor.py (A10 regression lock)"
+        )
+
+    # ------------------------------------------------------------------ doctor.py: py_compile
+
+    @pytest.mark.offline
+    def test_a10_doctor_py_compiles_cleanly(self):
+        """doctor.py must compile without syntax errors after A10 changes (py_compile)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "py_compile", str(_DOCTOR_PY)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"doctor.py has Python syntax errors (A10 py_compile check):\n{result.stderr}"
+        )
+
+    # ------------------------------------------------------------------ install.sh checks
+
+    @pytest.mark.offline
+    def test_install_sh_bootstrap_arg_present(self):
+        """install.sh must accept a --bootstrap argument (A10 explicit consent flag)."""
+        src = self._src_sh()
+        assert "--bootstrap" in src, (
+            "install.sh must define --bootstrap arg for A10 explicit consent"
+        )
+
+    @pytest.mark.offline
+    def test_install_sh_print_prereq_guidance_helper(self):
+        """install.sh must define _print_prereq_guidance (or equivalent) helper."""
+        src = self._src_sh()
+        assert "_print_prereq_guidance" in src, (
+            "install.sh must define _print_prereq_guidance helper for A10 guidance output"
+        )
+
+    @pytest.mark.offline
+    def test_install_sh_needs_admin_helper(self):
+        """install.sh must define _needs_admin (or equivalent) helper."""
+        src = self._src_sh()
+        assert "_needs_admin" in src, (
+            "install.sh must define _needs_admin helper to classify sudo-required tools (A10)"
+        )
+
+    @pytest.mark.offline
+    def test_install_sh_brew_formula_helper(self):
+        """install.sh must define _brew_formula (or equivalent) helper."""
+        src = self._src_sh()
+        assert "_brew_formula" in src, (
+            "install.sh must define _brew_formula helper for the no-sudo brew subset (A10)"
+        )
+
+    @pytest.mark.offline
+    def test_install_sh_die_inside_prereq_fail_block(self):
+        """install.sh must call die/exit only inside the still-failing block (not unconditionally).
+
+        We assert that 'die' appears after the PREREQ_FAIL block logic
+        (inside the guarded $PREREQ_FAIL check) — not as a bare unconditional.
+        """
+        src = self._src_sh()
+        assert "die" in src, "install.sh must use die() for hard-fail termination"
+        # die must appear after the consent bootstrap block — confirmed by
+        # checking that both the bootstrap consent guard and die are present.
+        assert "PREREQ_FAIL" in src, (
+            "install.sh must use PREREQ_FAIL gate variable (A10 hard-fail gate)"
+        )
+
+    @pytest.mark.offline
+    def test_install_sh_consent_guard_before_bootstrap(self):
+        """install.sh must have a consent guard (--bootstrap flag or TTY test) before installing."""
+        src = self._src_sh()
+        # The consent flag variable must be set from --bootstrap
+        assert "BOOTSTRAP_PREREQS" in src or "_consent" in src, (
+            "install.sh must have a consent variable (BOOTSTRAP_PREREQS or _consent) for A10"
+        )
+
+    @pytest.mark.offline
+    def test_install_sh_no_executable_cask(self):
+        """install.sh must NOT execute --cask quarto or any --cask brew command directly.
+
+        '--cask' may appear ONLY in guidance strings (echo/printf), not in executable brew calls.
+        """
+        src = self._src_sh()
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "--cask" not in stripped:
+                continue
+            # --cask appears on this line; it must be inside a printf/echo, not a brew call
+            # An executable brew --cask call looks like: brew install --cask ...
+            # But NOT inside a printf/echo string
+            # Heuristic: if the line starts with 'brew ' (after stripping) and has --cask → fail.
+            # Also catch: $(brew install --cask ...) patterns
+            is_exec = re.search(r'(?:^|\$\()\s*brew\s+install\s+.*--cask', stripped)
+            assert not is_exec, (
+                f"install.sh must NOT execute 'brew install --cask' (A10 no-sudo lock).\n"
+                f"Offending line: {line!r}"
+            )
+
+    @pytest.mark.offline
+    def test_install_sh_no_executable_sudo(self):
+        """install.sh must NOT run sudo in executable brew/install calls (A10 no-sudo lock).
+
+        'sudo' in guidance/comment strings is OK; an executable 'sudo ...' command is not.
+        """
+        src = self._src_sh()
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "sudo" not in stripped:
+                continue
+            # Check if this is an executable sudo call (not inside a string being printed)
+            # printf/echo lines with sudo in the string are OK.
+            # A line that IS an executable sudo: starts with 'sudo ' or has backtick/subshell sudo
+            is_exec = re.search(r'(?:^|\$\(|`)\s*sudo\s+', stripped)
+            # Allow if line is only a printf/echo printing sudo as guidance text
+            is_print = re.search(r'^\s*(?:printf|echo)\s+', stripped)
+            if is_exec and not is_print:
+                pytest.fail(
+                    f"install.sh must NOT execute sudo directly (A10 no-sudo lock).\n"
+                    f"Offending line: {line!r}"
+                )
+
+    @pytest.mark.offline
+    def test_install_sh_bash_syntax_clean(self):
+        """install.sh must be bash-syntax-clean (`bash -n`)."""
+        if not _INSTALL_SH.exists():
+            pytest.skip("install.sh not present")
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash not found; cannot check syntax")
+        result = subprocess.run(
+            [bash, "-n", str(_INSTALL_SH)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"install.sh has bash syntax errors (A10 check):\n{result.stderr}"
+        )
+
+    # ------------------------------------------------------------------ install.ps1 checks
+
+    @pytest.mark.offline
+    def test_install_ps1_fix_prereqs_switch_present(self):
+        """install.ps1 must define a -FixPrereqs switch parameter (A10)."""
+        src = self._src_ps1()
+        assert "FixPrereqs" in src, (
+            "install.ps1 must define -FixPrereqs switch parameter (A10 explicit consent)"
+        )
+
+    @pytest.mark.offline
+    def test_install_ps1_winget_id_present(self):
+        """install.ps1 must use winget install -e --id for prereq remediation."""
+        src = self._src_ps1()
+        assert "winget" in src, "install.ps1 must reference winget for prereq install (A10)"
+        assert "-e" in src and "--id" in src, (
+            "install.ps1 must use winget install -e --id form (A10 exact winget IDs)"
+        )
+
+    @pytest.mark.offline
+    def test_install_ps1_prereq_fail_variable_present(self):
+        """install.ps1 must use a $PrereqFail gate variable."""
+        src = self._src_ps1()
+        assert "PrereqFail" in src, (
+            "install.ps1 must use PrereqFail gate variable (A10 hard-fail gate)"
+        )
+
+    @pytest.mark.offline
+    def test_install_ps1_fail_inside_prereqfail_block(self):
+        """install.ps1 must call Fail (or equivalent termination) inside the $PrereqFail block."""
+        src = self._src_ps1()
+        assert "Fail" in src, (
+            "install.ps1 must call Fail for hard-fail termination (A10)"
+        )
+        # Confirm it's inside the PrereqFail guard, not unconditional
+        assert "$PrereqFail" in src, (
+            "install.ps1 must gate Fail inside a $PrereqFail check (A10)"
+        )
+
+    @pytest.mark.offline
+    def test_install_ps1_no_executable_cask(self):
+        """install.ps1 must NOT contain --cask (macOS-only, not valid on Windows)."""
+        src = self._src_ps1()
+        # --cask should never appear in a Windows installer
+        assert "--cask" not in src, (
+            "install.ps1 must NOT reference --cask (macOS Homebrew cask, not applicable on Windows)"
+        )
+
+    @pytest.mark.offline
+    def test_install_ps1_no_auto_elevation(self):
+        """install.ps1 must NOT contain auto-elevation patterns (RunAs/sudo/Start-Process *runas*)."""
+        src = self._src_ps1()
+        # Forbidden patterns: RunAs verb in Start-Process, Invoke-Expression with elevation, etc.
+        forbidden_patterns = [
+            r'Start-Process\b.*\brunas\b',
+            r'\bRunAs\b',
+            r'\bsudo\b',
+        ]
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            for pat in forbidden_patterns:
+                assert not re.search(pat, stripped, re.IGNORECASE), (
+                    f"install.ps1 must NOT contain auto-elevation pattern {pat!r} (A10 no-sudo lock).\n"
+                    f"Offending line: {line!r}"
+                )

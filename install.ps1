@@ -14,14 +14,23 @@
 .PARAMETER CodexHome
     Codex 홈 디렉토리를 재정의합니다 (기본값: %USERPROFILE%\.codex).
 
+.PARAMETER FixPrereqs
+    (A10) 누락/버전미달 선수도구의 비관리자(non-elevation) 항목을 winget으로
+    명시적 동의 하에 자동 설치합니다. 관리자 권한이 필요한 항목은 자동
+    실행하지 않고 정확한 명령만 안내합니다. 스위치 미지정 시 TTY에서는
+    y/N 질문, 비대화형이면 안내만 제공합니다. HARD-FAIL 선수도구 게이트는
+    변경되지 않습니다 — 부트스트랩은 선택적 보완일 뿐입니다.
+
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -SkipEmail
+    .\install.ps1 -FixPrereqs
     .\install.ps1 -CodexHome "C:\Users\alice\.codex"
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipEmail,
+    [switch]$FixPrereqs,
     [string]$CodexHome = ""
 )
 
@@ -451,34 +460,153 @@ Write-Info "  R:      $(if ($RPath) { "$RPath  $RVer" } else { '찾을 수 없�
 Write-Info "  Quarto: $(if ($QuartoPath) { "$QuartoPath  $QuartoVer" } else { '찾을 수 없음' })"
 Write-Info "  pandoc: $(if ($PandocPath) { "$PandocPath  $PandocVer" } else { '찾을 수 없음' })"
 
+# ── A10: per-OS exact winget command + admin/elevation classification ────────
+# Widely-valid winget IDs; canonical download URL given as a fallback. None of
+# these require elevation for a per-user winget install, so all are eligible
+# for the consent bootstrap (no admin-only item on Windows, unlike macOS
+# Quarto cask). Test-VersionFloor / floors are reused unchanged (no gate change).
+$WingetId = @{
+    "python3" = "Python.Python.3.12"
+    "R"       = "RProject.R"
+    "pandoc"  = "JohnMacFarlane.Pandoc"
+    "quarto"  = "Posit.Quarto"
+}
+$DownloadUrl = @{
+    "python3" = "https://www.python.org/downloads/"
+    "R"       = "https://cran.r-project.org"
+    "pandoc"  = "https://pandoc.org/installing.html"
+    "quarto"  = "https://quarto.org/docs/get-started/"
+}
+$PrereqTimeout = if ($env:OMR_DOCTOR_PREREQ_TIMEOUT) { [int]$env:OMR_DOCTOR_PREREQ_TIMEOUT } else { 900 }
+
+function Get-RemedCommand {
+    param([string]$Tool)
+    "winget install -e --id $($WingetId[$Tool])  # 또는 $($DownloadUrl[$Tool])"
+}
+
+function Test-PrereqTool {
+    # Re-probe one tool; returns $true if it now meets its floor.
+    param([string]$Tool)
+    switch ($Tool) {
+        "R" {
+            $p = Find-Tool -PathCandidates @("Rscript","R") -AbsCandidates $RAbsCandidates
+            if (-not $p) { return $false }
+            return (Test-VersionFloor (Get-ToolVersion $p) 4 2)
+        }
+        "quarto" {
+            $p = Find-Tool -PathCandidates @("quarto") -AbsCandidates $QuartoAbsCandidates
+            if (-not $p) { return $false }
+            return (Test-VersionFloor (Get-ToolVersion $p) 1 4)
+        }
+        "pandoc" {
+            $p = Find-Tool -PathCandidates @("pandoc") -AbsCandidates $PandocAbsCandidates
+            if (-not $p) { return $false }
+            return (Test-VersionFloor (Get-ToolVersion $p) 3 1)
+        }
+        default { return $false }
+    }
+}
+
 $PrereqFail = $false
+$FailedTools = [System.Collections.Generic.List[string]]::new()
 
 if (-not $RPath) {
     Write-Err "R을 찾을 수 없습니다. https://cran.r-project.org 에서 R >= 4.2 를 설치하세요."
-    $PrereqFail = $true
+    $PrereqFail = $true; $FailedTools.Add("R")
 } elseif (-not (Test-VersionFloor $RVer 4 2)) {
     Write-Err "R 버전이 너무 낮습니다 (현재: $RVer). R >= 4.2 가 필요합니다 — https://cran.r-project.org 에서 업그레이드하세요."
-    $PrereqFail = $true
+    $PrereqFail = $true; $FailedTools.Add("R")
 }
 
 if (-not $QuartoPath) {
     Write-Err "Quarto를 찾을 수 없습니다. https://quarto.org/docs/get-started/ 에서 Quarto >= 1.4 를 설치하세요."
-    $PrereqFail = $true
+    $PrereqFail = $true; $FailedTools.Add("quarto")
 } elseif (-not (Test-VersionFloor $QuartoVer 1 4)) {
     Write-Err "Quarto 버전이 너무 낮습니다 (현재: $QuartoVer). Quarto >= 1.4 가 필요합니다 — https://quarto.org 에서 업그레이드하세요."
-    $PrereqFail = $true
+    $PrereqFail = $true; $FailedTools.Add("quarto")
 }
 
 if (-not $PandocPath) {
     Write-Err "pandoc을 찾을 수 없습니다. https://pandoc.org/installing.html 에서 pandoc >= 3.1 을 설치하세요."
-    $PrereqFail = $true
+    $PrereqFail = $true; $FailedTools.Add("pandoc")
 } elseif (-not (Test-VersionFloor $PandocVer 3 1)) {
     Write-Err "pandoc 버전이 너무 낮습니다 (현재: $PandocVer). pandoc >= 3.1 이 필요합니다 — https://pandoc.org/installing.html 에서 업그레이드하세요."
-    $PrereqFail = $true
+    $PrereqFail = $true; $FailedTools.Add("pandoc")
 }
 
 if ($PrereqFail) {
-    Fail "하나 이상의 필수 프로그램 확인이 실패했습니다 (위 오류 참조).`n필요한 도구를 설치한 뒤 설치 프로그램을 다시 실행하세요."
+    # (1) ALWAYS print exact per-OS copy-paste guidance for each failing tool.
+    Write-Host ""
+    Write-Host "선수도구 설치 안내 (복사-붙여넣기)" -ForegroundColor White
+    Write-Host "--------------------------------------------"
+    $HaveWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
+    if (-not $HaveWinget) {
+        Write-Host "  ! winget(앱 설치 관리자)을 찾을 수 없습니다. Microsoft Store의 '앱 설치 관리자' 또는 https://aka.ms/getwinget 참조"
+        Write-Host ""
+    }
+    foreach ($t in $FailedTools) {
+        Write-Host "  [$t]"
+        Write-Host "    $(Get-RemedCommand $t)"
+    }
+    Write-Host "--------------------------------------------"
+
+    # (2) Consent bootstrap (A10): explicit -FixPrereqs OR interactive y/N.
+    #     Non-interactive + no switch ⇒ guidance only (NO install).
+    $Consent = $false
+    if ($FixPrereqs) {
+        $Consent = $true
+    } elseif ([Environment]::UserInteractive) {
+        $ans = Read-Host "누락 선수도구를 설치할까요? [y/N]"
+        if ($ans -in @("y","Y","예")) { $Consent = $true }
+    }
+
+    if ($Consent) {
+        if (-not $HaveWinget) {
+            Write-Warn "winget이 없어 자동 설치할 수 없습니다 — https://aka.ms/getwinget 참조. 아무것도 설치하지 않았습니다."
+        } else {
+            foreach ($t in $FailedTools) {
+                $wid = $WingetId[$t]
+                Write-Info "  winget install -e --id $wid ... (최대 ${PrereqTimeout}s)"
+                try {
+                    $proc = Start-Process -FilePath "winget" -ArgumentList @(
+                        "install","-e","--id",$wid,
+                        "--accept-source-agreements","--accept-package-agreements"
+                    ) -NoNewWindow -PassThru
+                    if (-not $proc.WaitForExit($PrereqTimeout * 1000)) {
+                        try { $proc.Kill() } catch {}
+                        Write-Warn "  $t: 설치 시간 초과 — 수동: $(Get-RemedCommand $t)"
+                    } elseif ($proc.ExitCode -ne 0) {
+                        Write-Warn "  $t: winget 실패 (rc=$($proc.ExitCode)) — 수동: $(Get-RemedCommand $t)"
+                    }
+                } catch {
+                    Write-Warn "  $t: 설치 실패 — 수동: $(Get-RemedCommand $t)"
+                }
+            }
+            # Re-probe; clear the gate ONLY if every failing tool now passes.
+            $StillFailed = [System.Collections.Generic.List[string]]::new()
+            foreach ($t in $FailedTools) {
+                if (Test-PrereqTool $t) { Write-Info "  $t: 재검증 통과" }
+                else { $StillFailed.Add($t) }
+            }
+            if ($StillFailed.Count -eq 0) {
+                $PrereqFail = $false
+                $RPath      = Find-Tool -PathCandidates @("Rscript","R") -AbsCandidates $RAbsCandidates
+                $QuartoPath = Find-Tool -PathCandidates @("quarto")      -AbsCandidates $QuartoAbsCandidates
+                $PandocPath = Find-Tool -PathCandidates @("pandoc")      -AbsCandidates $PandocAbsCandidates
+                $RVer      = if ($RPath)      { Get-ToolVersion $RPath }      else { "" }
+                $QuartoVer = if ($QuartoPath) { Get-ToolVersion $QuartoPath } else { "" }
+                $PandocVer = if ($PandocPath) { Get-ToolVersion $PandocPath } else { "" }
+                Write-Info "선수도구 부트스트랩 완료 — 모든 도구 재검증 통과"
+            } else {
+                Write-Warn "다음 도구는 자동 설치 후에도 미해결: $($StillFailed -join ', ') (위 명령을 직접 실행)"
+            }
+        }
+    }
+
+    # (3) HARD-FAIL gate — UNCHANGED. Only a fully-resolved re-probe clears it.
+    if ($PrereqFail) {
+        Fail "하나 이상의 필수 프로그램 확인이 실패했습니다 (위 오류 참조).`n필요한 도구를 설치한 뒤 설치 프로그램을 다시 실행하세요."
+    }
 }
 
 # ============================================================

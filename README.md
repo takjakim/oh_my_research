@@ -198,6 +198,18 @@ never silently. Manual fix:
 `Rscript -e 'install.packages(c("knitr","rmarkdown"), repos="https://cloud.r-project.org")'`.
 Statistical packages are never auto-installed (reproducibility/integrity).
 
+**System prerequisites (Python/R/Quarto/pandoc).** When any is missing or below
+the floor, `install.sh`/`$omr-doctor` print the exact per-OS copy-paste command
+(macOS Homebrew, Windows winget, with the official download URL as fallback). A
+consent-gated bootstrap — `bash install.sh --bootstrap` or
+`$omr-doctor --fix-prereqs` (flag or interactive y/N; never silent) — installs
+**only the no-admin subset** (`brew install python r pandoc` / non-elevated
+`winget`). **Quarto and anything needing an admin password are never run
+automatically** (the agent cannot enter sudo/UAC) — the exact command is printed
+for you to run. On Windows install Quarto via the `.msi` from
+[quarto.org](https://quarto.org/docs/get-started/) or
+`winget install -e --id Posit.Quarto`, then restart Codex.
+
 ### Next steps after installation
 
 1. Open Codex
@@ -286,6 +298,8 @@ when they are absent or below the minimum floor.
   - A6: TOML two-region split
   - A7: results.json `statistic` key pin + AC10 chosen-label assertion precision
   - A8: omr-advisor skill (지도교수 cross-verification + advisor-profile learning)
+  - A9: omr-doctor consent-gated knitr/rmarkdown probe & install
+  - A10: prerequisite per-OS guidance + consent bootstrap (no-admin subset only)
 - Acceptance test harness: [`tests/`](tests/) — see [`tests/README.md`](tests/README.md)
 
 **Verification status:** Verified end-to-end on macOS with live Codex + R 4.5

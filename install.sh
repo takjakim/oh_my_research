@@ -2,7 +2,15 @@
 # ============================================================
 #  oh-my-research  —  install.sh
 #  macOS + Linux installer (idempotent, reversible)
-#  Usage:  bash install.sh [--skip-email]
+#  Usage:  bash install.sh [--skip-email] [--bootstrap]
+#
+#  --bootstrap  (A10) EXPLICIT consent to auto-install the NO-SUDO subset of
+#               missing prerequisites via Homebrew (python/r/pandoc formulae).
+#               Quarto (`brew install --cask quarto`) and any admin/sudo item
+#               are NEVER auto-run — the exact command + reason are printed.
+#               Without --bootstrap on a TTY you are asked y/N; non-TTY +
+#               no flag ⇒ guidance only (no install). The HARD-FAIL prereq
+#               gate is UNCHANGED — --bootstrap is opt-in remediation only.
 # ============================================================
 set -euo pipefail
 
@@ -24,9 +32,11 @@ BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── arg parsing ──────────────────────────────────────────────
 SKIP_EMAIL=false
+BOOTSTRAP_PREREQS=false
 for arg in "$@"; do
   case "$arg" in
     --skip-email) SKIP_EMAIL=true ;;
+    --bootstrap)  BOOTSTRAP_PREREQS=true ;;
     *) warn "알 수 없는 인수: $arg" ;;
   esac
 done
@@ -460,38 +470,186 @@ info "  R:      ${R_PATH:-찾을 수 없음}  ${R_VER}"
 info "  Quarto: ${QUARTO_PATH:-찾을 수 없음}  ${QUARTO_VER}"
 info "  pandoc: ${PANDOC_PATH:-찾을 수 없음}  ${PANDOC_VER}"
 
+# ── A10: per-OS exact copy-paste remediation command for a tool ──────────────
+# $1 = logical tool name (python3|R|pandoc|quarto). Prints the EXACT command
+# for the detected OS. macOS uses Homebrew; the Quarto cask is flagged as
+# admin-password-required and is NEVER auto-run by --bootstrap.
+_OMR_TIMEOUT_BIN=""
+if command -v timeout >/dev/null 2>&1; then _OMR_TIMEOUT_BIN="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then _OMR_TIMEOUT_BIN="gtimeout"; fi
+_PREREQ_TIMEOUT="${OMR_DOCTOR_PREREQ_TIMEOUT:-900}"
+
+_remed_cmd() {
+  local tool="$1"
+  if [ "$_OS" = "Darwin" ]; then
+    case "$tool" in
+      python3) printf 'brew install python' ;;
+      R)       printf 'brew install r' ;;
+      pandoc)  printf 'brew install pandoc' ;;
+      quarto)  printf 'brew install --cask quarto  # 관리자 비밀번호 필요 — 본인이 직접 실행' ;;
+    esac
+  else
+    # Linux / other POSIX — point at upstream installers (no universal pkg mgr).
+    case "$tool" in
+      python3) printf 'https://www.python.org/downloads/ (또는 배포판 패키지 관리자)' ;;
+      R)       printf 'https://cran.r-project.org (또는 배포판 패키지 관리자)' ;;
+      pandoc)  printf 'https://pandoc.org/installing.html' ;;
+      quarto)  printf 'https://quarto.org/docs/get-started/' ;;
+    esac
+  fi
+}
+
+# Tools that need an admin/sudo password ⇒ NEVER auto-run (macOS Quarto cask).
+_needs_admin() { [ "$_OS" = "Darwin" ] && [ "$1" = "quarto" ]; }
+
+# brew formula name for the no-sudo installable subset.
+_brew_formula() {
+  case "$1" in
+    python3) printf 'python' ;;
+    R)       printf 'r' ;;
+    pandoc)  printf 'pandoc' ;;
+    *)       printf '' ;;
+  esac
+}
+
+_print_prereq_guidance() {
+  # $@ = failing tool names
+  printf "\n"
+  printf "${BOLD}선수도구 설치 안내 (복사-붙여넣기)${RESET}\n"
+  printf -- "--------------------------------------------\n"
+  if [ "$_OS" = "Darwin" ] && ! command -v brew >/dev/null 2>&1; then
+    printf "  ! Homebrew(brew)가 설치되어 있지 않습니다. 먼저 Homebrew를 설치하세요: https://brew.sh\n\n"
+  fi
+  local t
+  for t in "$@"; do
+    printf "  [%s]\n" "$t"
+    printf "    %s\n" "$(_remed_cmd "$t")"
+    if _needs_admin "$t"; then
+      printf "    └─ 주의: 관리자 비밀번호 필요로 자동화 불가, 직접 실행하세요\n"
+    fi
+  done
+  printf -- "--------------------------------------------\n"
+}
+
+# Re-probe one tool after a bootstrap install. Echoes "OK" if it now meets the
+# floor, else "FAIL". Mirrors the original probe+floor logic (no gate change).
+_reprobe_one() {
+  local tool="$1" cands_name p v
+  case "$tool" in
+    python3) p="$(command -v python3 2>/dev/null || true)";
+             [ -n "$p" ] && v="$("$p" --version 2>&1 || true)";
+             { [ -n "$p" ] && _ver_meets_floor "$v" 3 10; } && { echo OK; return; } ;;
+    R)       local pr; pr="$(_probe_tool R Rscript "${_R_CANDS[@]}")";
+             p="$(printf '%s' "$pr" | cut -f2)"; v="$(printf '%s' "$pr" | cut -f3)";
+             { [ -n "$p" ] && _ver_meets_floor "$v" 4 2; } && { echo OK; return; } ;;
+    pandoc)  local pp; pp="$(_probe_tool pandoc pandoc "${_PANDOC_CANDS[@]}")";
+             p="$(printf '%s' "$pp" | cut -f2)"; v="$(printf '%s' "$pp" | cut -f3)";
+             { [ -n "$p" ] && _ver_meets_floor "$v" 3 1; } && { echo OK; return; } ;;
+    quarto)  local pq; pq="$(_probe_tool quarto quarto "${_QUARTO_CANDS[@]}")";
+             p="$(printf '%s' "$pq" | cut -f2)"; v="$(printf '%s' "$pq" | cut -f3)";
+             { [ -n "$p" ] && _ver_meets_floor "$v" 1 4; } && { echo OK; return; } ;;
+  esac
+  echo FAIL
+}
+
 PREREQ_FAIL=false
+_FAILED_TOOLS=()
 
 # R ≥ 4.2
 if [ -z "$R_PATH" ]; then
   error "R을 찾을 수 없습니다. https://cran.r-project.org 에서 R ≥ 4.2 를 설치하세요."
-  PREREQ_FAIL=true
+  PREREQ_FAIL=true; _FAILED_TOOLS+=("R")
 elif ! _ver_meets_floor "$R_VER" 4 2; then
   error "R 버전이 너무 낮습니다 (현재: $R_VER). R ≥ 4.2 가 필요합니다 — https://cran.r-project.org 에서 업그레이드하세요."
-  PREREQ_FAIL=true
+  PREREQ_FAIL=true; _FAILED_TOOLS+=("R")
 fi
 
 # Quarto ≥ 1.4
 if [ -z "$QUARTO_PATH" ]; then
   error "Quarto를 찾을 수 없습니다. https://quarto.org/docs/get-started/ 에서 Quarto ≥ 1.4 를 설치하세요."
-  PREREQ_FAIL=true
+  PREREQ_FAIL=true; _FAILED_TOOLS+=("quarto")
 elif ! _ver_meets_floor "$QUARTO_VER" 1 4; then
   error "Quarto 버전이 너무 낮습니다 (현재: $QUARTO_VER). Quarto ≥ 1.4 가 필요합니다 — https://quarto.org 에서 업그레이드하세요."
-  PREREQ_FAIL=true
+  PREREQ_FAIL=true; _FAILED_TOOLS+=("quarto")
 fi
 
 # pandoc ≥ 3.1
 if [ -z "$PANDOC_PATH" ]; then
   error "pandoc을 찾을 수 없습니다. https://pandoc.org/installing.html 에서 pandoc ≥ 3.1 을 설치하세요."
-  PREREQ_FAIL=true
+  PREREQ_FAIL=true; _FAILED_TOOLS+=("pandoc")
 elif ! _ver_meets_floor "$PANDOC_VER" 3 1; then
   error "pandoc 버전이 너무 낮습니다 (현재: $PANDOC_VER). pandoc ≥ 3.1 이 필요합니다 — https://pandoc.org/installing.html 에서 업그레이드하세요."
-  PREREQ_FAIL=true
+  PREREQ_FAIL=true; _FAILED_TOOLS+=("pandoc")
 fi
 
 if $PREREQ_FAIL; then
-  die "하나 이상의 필수 프로그램 확인이 실패했습니다 (위 오류 참조).
+  # (1) ALWAYS print exact per-OS copy-paste guidance for each failing tool.
+  _print_prereq_guidance "${_FAILED_TOOLS[@]}"
+
+  # (2) Consent bootstrap (A10): explicit flag OR interactive TTY y/N.
+  #     Non-TTY + no flag ⇒ guidance only (NO install). The HARD-FAIL gate
+  #     below is preserved verbatim — bootstrap is opt-in remediation.
+  _consent=false
+  if $BOOTSTRAP_PREREQS; then
+    _consent=true
+  elif [ -t 0 ]; then
+    printf "${BOLD}누락 선수도구를 설치할까요? [y/N]: ${RESET}"
+    read -r _ans </dev/tty || _ans=""
+    case "$_ans" in y|Y|예) _consent=true ;; esac
+  fi
+
+  if $_consent; then
+    if [ "$_OS" != "Darwin" ]; then
+      warn "자동 부트스트랩은 macOS(Homebrew)만 지원합니다. 위 안내 명령을 직접 실행하세요."
+    elif ! command -v brew >/dev/null 2>&1; then
+      warn "Homebrew(brew)가 없어 자동 설치할 수 없습니다 — https://brew.sh 에서 먼저 설치하세요. 아무것도 설치하지 않았습니다."
+    else
+      for _t in "${_FAILED_TOOLS[@]}"; do
+        if _needs_admin "$_t"; then
+          warn "  $_t: 관리자 비밀번호 필요로 자동화 불가 — 직접 실행: $(_remed_cmd "$_t")"
+          continue
+        fi
+        _f="$(_brew_formula "$_t")"
+        [ -z "$_f" ] && continue
+        info "  brew install $_f … (최대 ${_PREREQ_TIMEOUT}s)"
+        if [ -n "$_OMR_TIMEOUT_BIN" ]; then
+          "$_OMR_TIMEOUT_BIN" "$_PREREQ_TIMEOUT" brew install "$_f" </dev/null || \
+            warn "  brew install $_f 실패 — 수동: $(_remed_cmd "$_t")"
+        else
+          brew install "$_f" </dev/null || \
+            warn "  brew install $_f 실패 — 수동: $(_remed_cmd "$_t")"
+        fi
+      done
+      # Re-probe all tools; clear the gate ONLY for the ones that now pass.
+      _STILL_FAILED=()
+      for _t in "${_FAILED_TOOLS[@]}"; do
+        if [ "$(_reprobe_one "$_t")" = "OK" ]; then
+          info "  $_t: 재검증 통과"
+        else
+          _STILL_FAILED+=("$_t")
+        fi
+      done
+      if [ "${#_STILL_FAILED[@]}" -eq 0 ]; then
+        PREREQ_FAIL=false
+        # Refresh path/version vars for the manifest.
+        PROBE_R="$(_probe_tool R Rscript "${_R_CANDS[@]}")"
+        PROBE_QUARTO="$(_probe_tool quarto quarto "${_QUARTO_CANDS[@]}")"
+        PROBE_PANDOC="$(_probe_tool pandoc pandoc "${_PANDOC_CANDS[@]}")"
+        R_PATH="$(printf '%s' "$PROBE_R" | cut -f2)";       R_VER="$(printf '%s' "$PROBE_R" | cut -f3)"
+        QUARTO_PATH="$(printf '%s' "$PROBE_QUARTO" | cut -f2)"; QUARTO_VER="$(printf '%s' "$PROBE_QUARTO" | cut -f3)"
+        PANDOC_PATH="$(printf '%s' "$PROBE_PANDOC" | cut -f2)"; PANDOC_VER="$(printf '%s' "$PROBE_PANDOC" | cut -f3)"
+        info "선수도구 부트스트랩 완료 — 모든 도구 재검증 통과"
+      else
+        warn "다음 도구는 자동 설치 후에도 미해결: ${_STILL_FAILED[*]} (위 명령을 직접 실행)"
+      fi
+    fi
+  fi
+
+  # (3) HARD-FAIL gate — UNCHANGED. Only a fully-resolved re-probe clears it.
+  if $PREREQ_FAIL; then
+    die "하나 이상의 필수 프로그램 확인이 실패했습니다 (위 오류 참조).
 필요한 도구를 설치한 뒤 설치 프로그램을 다시 실행하세요."
+  fi
 fi
 
 # Write preliminary manifest (updated again in step 10)

@@ -179,3 +179,24 @@ CONSENT-GATED auto-install of ONLY those two (render infra, NOT statistics).
 - Auto-install ONLY with explicit consent: interactive "설치할까요?" prompt AND/OR `--fix` flag. NEVER silent (no consent → guidance only). Installs exactly knitr+rmarkdown into user R lib, logged; re-probe → PASS after success.
 - Statistical packages UNCHANGED: MVP/examples need ZERO (base-R/stats only, AC-enforced); a researcher's own beyond-MVP package needs stay explicit-approval per §4.4 with sessionInfo/reproducibility note — NOT auto. "No silent install" principle preserved (consent ≠ silent).
 - Preserve ALL prior doctor fixes (per-OS detect, version-floor HARD FAIL, R-via-Rscript, classify_privilege study_root, EV5 codex flags, Korean output). Pending: doctor.py impl + offline AC + README FAQ line.
+
+## Addendum A10: prerequisite (Python/R/Quarto/pandoc) guidance + consent bootstrap
+Reality: R/Python can't install each other; only OS pkg managers (brew/winget)
+can. macOS Quarto (`brew install --cask quarto`) and admin-needing items require
+an interactive sudo password the Codex agent CANNOT supply → never fully
+automatable. Decision (consistent with A9 "consent ≠ silent", and relaxing the
+§1 'no toolchain install' non-goal ONLY under explicit consent):
+1. ENHANCED GUIDANCE (always): installer HARD-FAIL path + `$omr-doctor` print
+   EXACT copy-paste per-OS commands for each missing/below-floor tool — macOS
+   `brew install python r pandoc` + `brew install --cask quarto` (notes: needs
+   Homebrew; Quarto needs admin password — run yourself), Windows `winget install`
+   equivalents. Korean.
+2. CONSENT BOOTSTRAP: `$omr-doctor --fix-prereqs` (and/or `install.sh
+   --bootstrap`) — with EXPLICIT consent (flag or TTY y/N), auto-install ONLY the
+   no-sudo subset via the detected pkg manager (brew formula python/r/pandoc;
+   winget where non-elevated). Items needing admin/sudo (notably Quarto cask) or
+   a missing pkg manager → NOT auto-run; print the exact command + plain-language
+   reason. Never silent; non-TTY/no-flag ⇒ guidance only. Pin min versions
+   (R≥4.2/Quarto≥1.4/pandoc≥3.1/Python≥3.10); re-probe after.
+3. Statistical packages remain base-R/no-auto (A9 unchanged). Preserve all prior
+   doctor/installer fixes. Pending: impl (install.* + doctor.py) + README + AC.

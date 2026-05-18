@@ -28,12 +28,110 @@ import sys
 from dataclasses import dataclass, field
 
 # (display name, executable, version flag args, floor as (major, minor) or None)
+# HARD-FAIL gating is UNCHANGED from prior fixes: R/Quarto/pandoc enforce a
+# floor (FAIL on miss/below-floor/unparseable); python3 floor stays None so
+# its HARD-FAIL gating behavior is exactly as before (WARN-only on absence).
+# A10 guidance/remediation uses a SEPARATE advisory floor (_GUIDANCE_FLOOR)
+# so a stale/missing python3 still gets an exact copy-paste command without
+# altering the existing exit-code gate.
 TOOLS: list[tuple[str, str, list[str], tuple[int, int] | None]] = [
     ("R", "Rscript", ["--version"], (4, 2)),
     ("quarto", "quarto", ["--version"], (1, 4)),
     ("pandoc", "pandoc", ["--version"], (3, 1)),
     ("python3", "python3", ["--version"], None),
 ]
+
+# Plan A10 min-version floors for GUIDANCE/remediation only (does NOT change
+# probe_tools' exit-code HARD FAIL gate). Python ≥3.10 surfaces a copy-paste
+# command for a too-old/absent python3 without making it a hard gate.
+_GUIDANCE_FLOOR: dict[str, tuple[int, int]] = {
+    "R": (4, 2),
+    "quarto": (1, 4),
+    "pandoc": (3, 1),
+    "python3": (3, 10),
+}
+
+# ── A10: per-OS prerequisite remediation ────────────────────────────────────
+# Only OS package managers install these — R/Python cannot install each other.
+# macOS = Homebrew, Windows = winget. Items needing an admin/sudo password
+# (notably the Quarto macOS cask) CANNOT be automated by this script/agent
+# (interactive sudo) — we print the exact command + plain reason instead.
+#
+# "tool" key = the display name used in TOOLS / probe results.
+_PKG_MGR_ABSENT_MACOS = (
+    "Homebrew(brew)가 설치되어 있지 않습니다. 먼저 Homebrew를 설치하세요: "
+    "https://brew.sh  (설치 명령은 공식 사이트의 안내를 따르세요)"
+)
+_PKG_MGR_ABSENT_WINDOWS = (
+    "winget(앱 설치 관리자)을 찾을 수 없습니다. Microsoft Store에서 "
+    "'앱 설치 관리자(App Installer)'를 설치하거나 "
+    "https://aka.ms/getwinget 를 참조하세요"
+)
+
+# macOS: copy-paste brew command per tool. needs_admin=True ⇒ NEVER auto-run.
+_MACOS_REMED: dict[str, tuple[str, bool, str]] = {
+    # tool: (exact command, needs_admin, plain-language note)
+    "python3": ("brew install python", False, ""),
+    "R": ("brew install r", False, ""),
+    "pandoc": ("brew install pandoc", False, ""),
+    "quarto": (
+        "brew install --cask quarto  # 관리자 비밀번호 필요 — 본인이 직접 실행",
+        True,
+        "관리자 비밀번호 필요로 자동화 불가, 직접 실행하세요",
+    ),
+}
+
+# Windows: widely-valid winget IDs (-e exact, --id). Canonical download URLs
+# given as a fallback in case a winget source/ID is unavailable.
+_WINDOWS_REMED: dict[str, tuple[str, bool, str]] = {
+    "python3": (
+        "winget install -e --id Python.Python.3.12"
+        "  # 또는 https://www.python.org/downloads/",
+        False,
+        "",
+    ),
+    "R": (
+        "winget install -e --id RProject.R"
+        "  # 또는 https://cran.r-project.org",
+        False,
+        "",
+    ),
+    "pandoc": (
+        "winget install -e --id JohnMacFarlane.Pandoc"
+        "  # 또는 https://pandoc.org/installing.html",
+        False,
+        "",
+    ),
+    "quarto": (
+        "winget install -e --id Posit.Quarto"
+        "  # 또는 https://quarto.org/docs/get-started/",
+        False,
+        "",
+    ),
+}
+
+# brew formula name per tool (no-sudo, non-cask installable subset).
+_BREW_FORMULA = {"python3": "python", "R": "r", "pandoc": "pandoc"}
+# winget ID per tool (non-elevated installable subset).
+_WINGET_ID = {
+    "python3": "Python.Python.3.12",
+    "R": "RProject.R",
+    "pandoc": "JohnMacFarlane.Pandoc",
+    "quarto": "Posit.Quarto",
+}
+
+# Generous wall-clock so a pkg-manager install never hangs a terminal.
+_PREREQ_TIMEOUT = int(os.environ.get("OMR_DOCTOR_PREREQ_TIMEOUT", "900"))
+
+
+def _remed_table() -> dict[str, tuple[str, bool, str]]:
+    """Return the per-OS {tool: (command, needs_admin, note)} mapping."""
+    if platform.system() == "Windows":
+        return _WINDOWS_REMED
+    # macOS is the primary no-sudo target; Linux falls back to the macOS
+    # guidance shape but the consent bootstrap only auto-runs when `brew`
+    # actually resolves (Linuxbrew) — otherwise guidance only.
+    return _MACOS_REMED
 
 
 def _known_candidates_r() -> list[str]:
@@ -123,12 +221,31 @@ class Check:
 @dataclass
 class Report:
     checks: list[Check] = field(default_factory=list)
+    # A10: tool display-names whose initial probe FAILed but were
+    # consent-installed and RE-PROBED to PASS. Their original probe FAIL is
+    # superseded for the exit-code/verdict gate (spec: missing prereq ⇒
+    # not-OK/1 UNLESS consent-installed→reprobe PASS). The original check
+    # line stays visible for transparency.
+    resolved_prereqs: set[str] = field(default_factory=set)
 
     def add(self, name: str, status: str, detail: str = "") -> None:
         self.checks.append(Check(name, status, detail))
 
+    def mark_prereq_resolved(self, tool: str) -> None:
+        self.resolved_prereqs.add(tool)
+
     def has_hard_fail(self) -> bool:
-        return any(c.status == FAIL for c in self.checks)
+        for c in self.checks:
+            if c.status != FAIL:
+                continue
+            # A consent-installed-then-reprobe-PASS prereq's original probe
+            # FAIL is superseded (its name is a bare TOOLS display-name).
+            if c.name in self.resolved_prereqs and not c.name.startswith(
+                "선수도구"
+            ):
+                continue
+            return True
+        return False
 
     def render(self) -> str:
         width = max((len(c.name) for c in self.checks), default=4)
@@ -187,14 +304,27 @@ def _run(cmd: list[str], timeout: int = 20) -> tuple[int, str, str]:
         return 1, "", str(exc)
 
 
-def probe_tools(report: Report) -> None:
+def probe_tools(report: Report) -> list[str]:
+    """Probe each prerequisite tool; preserve the existing HARD-FAIL gating
+    (missing/below-floor/unparseable ⇒ FAIL when a floor exists, WARN
+    otherwise — unchanged behavior).
+
+    Returns the ordered list of tool display-names that are MISSING or
+    below-floor or unparseable, so the caller can print exact per-OS
+    copy-paste remediation commands (A10 guidance, always-on) and optionally
+    offer the consent-gated bootstrap.
+    """
+    needs_remediation: list[str] = []
     for name, executable, args, floor in TOOLS:
         # Build candidate list: PATH first, then per-OS known install dirs.
         candidates = _find_candidates(executable)
 
+        gfloor = _GUIDANCE_FLOOR.get(name)
+
         if not candidates:
             status = FAIL if floor else WARN
             report.add(name, status, "PATH 또는 알려진 설치 경로에서 찾을 수 없음")
+            needs_remediation.append(name)
             continue
 
         # Try each candidate in order; use the first that yields a parseable version.
@@ -214,6 +344,7 @@ def probe_tools(report: Report) -> None:
             status = FAIL if floor else WARN
             suffix = " (HARD FAIL)" if floor else ""
             report.add(name, status, f"{abspath} (버전 알 수 없음){suffix}")
+            needs_remediation.append(name)
             continue
 
         vstr = ".".join(str(p) for p in ver)
@@ -224,8 +355,197 @@ def probe_tools(report: Report) -> None:
                 FAIL,
                 f"{resolved_path} v{vstr} < 필요 버전 {need} (HARD FAIL)",
             )
+            needs_remediation.append(name)
+        elif gfloor is not None and (ver[0], ver[1]) < gfloor:
+            # Below the A10 advisory floor (e.g. python3 < 3.10): NOT a hard
+            # gate change — report WARN and surface a copy-paste command.
+            need = f"{gfloor[0]}.{gfloor[1]}"
+            report.add(
+                name,
+                WARN,
+                f"{resolved_path} v{vstr} < 권장 버전 {need} (A10 안내)",
+            )
+            needs_remediation.append(name)
         else:
             report.add(name, PASS, f"{resolved_path} v{vstr}")
+    return needs_remediation
+
+
+def _have_pkg_manager() -> tuple[bool, str]:
+    """Return (present?, manager-name) for the detected OS package manager."""
+    mgr = "winget" if platform.system() == "Windows" else "brew"
+    return (shutil.which(mgr) is not None, mgr)
+
+
+def _print_guidance(needs: list[str]) -> None:
+    """A10 (ALWAYS): for each missing/below-floor tool print the EXACT
+    copy-paste command for the detected OS. Korean, concise, copy-paste-ready.
+    Items needing admin/sudo are printed but flagged as not-automatable.
+    """
+    remed = _remed_table()
+    have_mgr, mgr = _have_pkg_manager()
+    print()
+    print("선수도구 설치 안내 (복사-붙여넣기)")
+    print("-" * 44)
+    if not have_mgr:
+        pointer = (
+            _PKG_MGR_ABSENT_WINDOWS
+            if platform.system() == "Windows"
+            else _PKG_MGR_ABSENT_MACOS
+        )
+        print(f"  ! {pointer}")
+        print()
+    for name in needs:
+        cmd, needs_admin, note = remed.get(name, ("(설치 명령 없음)", False, ""))
+        print(f"  [{name}]")
+        print(f"    {cmd}")
+        if needs_admin and note:
+            print(f"    └─ 주의: {note}")
+    print("-" * 44)
+
+
+def _pkg_install(mgr: str, tool: str) -> tuple[int, str, str]:
+    """Run the detected pkg manager for ONE no-sudo tool. Output captured;
+    time-bounded so it never hangs. NEVER used for admin/sudo items.
+    """
+    if mgr == "brew":
+        formula = _BREW_FORMULA[tool]
+        return _run(["brew", "install", formula], timeout=_PREREQ_TIMEOUT)
+    # winget: non-interactive, accept agreements; non-elevated subset only.
+    wid = _WINGET_ID[tool]
+    return _run(
+        [
+            "winget",
+            "install",
+            "-e",
+            "--id",
+            wid,
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ],
+        timeout=_PREREQ_TIMEOUT,
+    )
+
+
+def _reprobe_tool(name: str) -> tuple[str, str]:
+    """Re-run the floor check for a single tool after an install attempt.
+    Returns (status, detail) mirroring probe_tools' verdict semantics.
+    """
+    spec = next((t for t in TOOLS if t[0] == name), None)
+    if spec is None:
+        return WARN, "알 수 없는 도구"
+    _, executable, args, floor = spec
+    gfloor = _GUIDANCE_FLOOR.get(name)
+    candidates = _find_candidates(executable)
+    if not candidates:
+        return (FAIL if floor else WARN), "여전히 찾을 수 없음"
+    for cand in candidates:
+        rc, out, err = _run([cand, *args])
+        parsed = _parse_version(out) or _parse_version(err)
+        if parsed is not None:
+            vstr = ".".join(str(p) for p in parsed)
+            if floor is not None and (parsed[0], parsed[1]) < floor:
+                need = f"{floor[0]}.{floor[1]}"
+                return FAIL, f"{os.path.realpath(cand)} v{vstr} < {need} (HARD FAIL)"
+            if gfloor is not None and (parsed[0], parsed[1]) < gfloor:
+                need = f"{gfloor[0]}.{gfloor[1]}"
+                return FAIL, f"{os.path.realpath(cand)} v{vstr} < {need} (A10 권장 미달)"
+            return PASS, f"{os.path.realpath(cand)} v{vstr}"
+    return (FAIL if floor else WARN), f"{os.path.realpath(candidates[0])} (버전 알 수 없음)"
+
+
+def bootstrap_prereqs(report: Report, needs: list[str], want_fix_prereqs: bool) -> None:
+    """A10 consent bootstrap. ALWAYS prints exact per-OS guidance first.
+
+    Then, ONLY with explicit consent (the `--fix-prereqs` flag OR an
+    interactive TTY y/N prompt — mirrors A9 exactly), auto-installs the
+    NO-SUDO subset via the detected package manager:
+      - macOS: `brew install` python/r/pandoc (only the missing ones).
+        Quarto cask is NEVER auto-run (interactive sudo) — its exact command
+        + admin-password reason is printed instead.
+      - Windows: `winget install` the non-elevated missing ones.
+      - pkg manager absent ⇒ official install pointer, install nothing.
+    Non-TTY without the flag ⇒ guidance ONLY, NO install (A9 "consent ≠
+    silent"). After any install attempt the tool is RE-PROBED and PASS/FAIL
+    reported per tool with the manual command + stderr tail on failure.
+    """
+    if not needs:
+        return
+
+    # (1) ALWAYS: exact per-OS copy-paste guidance.
+    _print_guidance(needs)
+
+    # (2) Consent decision — identical shape to A9's knitr/rmarkdown path.
+    consent = False
+    if want_fix_prereqs:
+        consent = True
+    elif sys.stdin is not None and sys.stdin.isatty():
+        try:
+            sys.stdout.write("누락 선수도구를 설치할까요? [y/N]: ")
+            sys.stdout.flush()
+            answer = sys.stdin.readline().strip()
+        except (EOFError, OSError):
+            answer = ""
+        consent = answer in ("y", "Y", "예")
+
+    if not consent:
+        # Non-TTY w/o flag, or declined: guidance already printed; no install.
+        report.add(
+            "선수도구 부트스트랩",
+            SKIP,
+            "동의 없음 (비대화형 + --fix-prereqs 미지정 또는 거부) — 안내만 제공",
+        )
+        return
+
+    have_mgr, mgr = _have_pkg_manager()
+    if not have_mgr:
+        # pkg manager absent: pointer only, install nothing.
+        pointer = (
+            _PKG_MGR_ABSENT_WINDOWS
+            if platform.system() == "Windows"
+            else _PKG_MGR_ABSENT_MACOS
+        )
+        report.add(
+            "선수도구 부트스트랩",
+            FAIL,
+            f"{mgr} 미설치로 자동 설치 불가 — {pointer}",
+        )
+        return
+
+    remed = _remed_table()
+    auto_subset = _BREW_FORMULA if mgr == "brew" else _WINGET_ID
+    attempted_any = False
+    for name in needs:
+        cmd, needs_admin, note = remed.get(name, ("", False, ""))
+        if needs_admin or name not in auto_subset:
+            # Admin/sudo (e.g. macOS Quarto cask): NEVER auto-run.
+            report.add(
+                f"선수도구 {name}",
+                FAIL,
+                f"자동 설치 제외 — 직접 실행: {cmd}"
+                + (f" ({note})" if note else ""),
+            )
+            continue
+        attempted_any = True
+        rc, out, err = _pkg_install(mgr, name)
+        status, detail = _reprobe_tool(name)
+        if status == PASS:
+            report.add(f"선수도구 {name}", PASS, f"설치/재검증 완료 — {detail}")
+            # Supersede the original probe FAIL for the exit-code gate.
+            report.mark_prereq_resolved(name)
+        else:
+            tail = " | ".join((err or "").strip().splitlines()[-3:]) or "(stderr 없음)"
+            report.add(
+                f"선수도구 {name}",
+                FAIL,
+                f"설치 실패 (rc={rc}): {tail[:160]} — 수동: {cmd}",
+            )
+    if not attempted_any:
+        report.add(
+            "선수도구 부트스트랩",
+            WARN,
+            "자동 설치 가능한 누락 도구 없음 (admin 필요 항목은 직접 실행)",
+        )
 
 
 # A9: render infra ONLY. We probe/consent-install exactly knitr+rmarkdown
@@ -508,18 +828,25 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     skip_mcp = "--skip-mcp" in args
     want_fix = "--fix" in args
+    want_fix_prereqs = "--fix-prereqs" in args
     if "-h" in args or "--help" in args:
         print(
-            "사용법: doctor.py [--skip-mcp] [--fix]\n"
-            "  --skip-mcp   환경/버전 프로브만; EV5 codex 게이트 건너뜀.\n"
-            "  --fix        knitr/rmarkdown 부재 시 동의 없이 설치 (명시적 동의로 간주).\n"
+            "사용법: doctor.py [--skip-mcp] [--fix] [--fix-prereqs]\n"
+            "  --skip-mcp     환경/버전 프로브만; EV5 codex 게이트 건너뜀.\n"
+            "  --fix          knitr/rmarkdown 부재 시 동의 없이 설치 (명시적 동의로 간주).\n"
+            "  --fix-prereqs  누락/버전미달 선수도구(Python/R/pandoc)를 명시적 동의로\n"
+            "                 OS 패키지 관리자(brew/winget)로 설치. sudo/admin 필요\n"
+            "                 항목(예: macOS Quarto cask)은 자동 실행하지 않고 명령만 안내.\n"
+            "                 --fix 와 동시 사용 가능.\n"
             "  환경변수: OMR_DOCTOR_CODEX_TIMEOUT (초, 기본 90),\n"
             "            OMR_CRAN_REPO (기본 https://cloud.r-project.org),\n"
-            "            OMR_DOCTOR_R_INSTALL_TIMEOUT (초, 기본 600)."
+            "            OMR_DOCTOR_R_INSTALL_TIMEOUT (초, 기본 600),\n"
+            "            OMR_DOCTOR_PREREQ_TIMEOUT (초, 기본 900)."
         )
         return 0
     report = Report()
-    probe_tools(report)
+    needs_remediation = probe_tools(report)
+    bootstrap_prereqs(report, needs_remediation, want_fix_prereqs)
     probe_r_packages(report, want_fix)
     if skip_mcp:
         report.add(
