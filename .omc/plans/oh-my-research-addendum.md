@@ -167,3 +167,15 @@ the 7th skill (user go-ahead).
 
 ## A8 integration CLOSED
 README updated (7-skill table + Advisor review section + MVP/A8 entry; all "seven skills" consistent). tests: +20 offline AC (TestACSAdvisorStructural) → offline 71 passed (was 51), incl. 7-skill lock + read-only/non-blocking/ASCII/4-cross-check assertions + 1 codex-guarded E2E stub (clean skip). Installer auto-installs omr-advisor via skills/omr-* glob (no installer change). examples/lecture/ (UCI ×4) added for teaching. Live ~/.codex still 6 skills — re-install surfaces the 7th (omr-advisor); user go-ahead pending.
+
+## Addendum A9: omr-doctor knitr/rmarkdown consent-gated install (user decision)
+Gap: doctor checks R/Quarto/pandoc/python versions only; Quarto's knitr engine
+needs R packages `knitr`+`rmarkdown` to render any .qmd R chunk — if absent,
+Stage 3/4 render fails late ("missing-r-package", stage `blocked`, no fabrication
+— integrity already safe). Decision: doctor PROBES knitr+rmarkdown and offers a
+CONSENT-GATED auto-install of ONLY those two (render infra, NOT statistics).
+- Probe: `Rscript -e 'cat(requireNamespace("knitr",quietly=TRUE),requireNamespace("rmarkdown",quietly=TRUE))'` (or `quarto check knitr`).
+- Missing → verdict FAIL (blocks render, like Quarto-absent) with Korean message + exact `install.packages(c("knitr","rmarkdown"))` command.
+- Auto-install ONLY with explicit consent: interactive "설치할까요?" prompt AND/OR `--fix` flag. NEVER silent (no consent → guidance only). Installs exactly knitr+rmarkdown into user R lib, logged; re-probe → PASS after success.
+- Statistical packages UNCHANGED: MVP/examples need ZERO (base-R/stats only, AC-enforced); a researcher's own beyond-MVP package needs stay explicit-approval per §4.4 with sessionInfo/reproducibility note — NOT auto. "No silent install" principle preserved (consent ≠ silent).
+- Preserve ALL prior doctor fixes (per-OS detect, version-floor HARD FAIL, R-via-Rscript, classify_privilege study_root, EV5 codex flags, Korean output). Pending: doctor.py impl + offline AC + README FAQ line.

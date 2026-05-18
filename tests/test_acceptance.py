@@ -2062,3 +2062,319 @@ class TestACSAdvisorCodexE2E:
             f"Initial stages: {initial_stages}\n"
             f"Final stages:   {final_state.get('stages')}"
         )
+
+
+# ---------------------------------------------------------------------------
+# A9  — omr-doctor knitr/rmarkdown consent-gated install (offline static)
+# ---------------------------------------------------------------------------
+
+_DOCTOR_PY = (
+    REPO_ROOT / "skills" / "omr-doctor" / "scripts" / "doctor.py"
+)
+
+
+class TestA9DoctorKnitrRmarkdown:
+    """A9: Offline static-source inspection of skills/omr-doctor/scripts/doctor.py.
+
+    Verifies the knitr+rmarkdown probe, consent-gated install, scope lock, and
+    regression guards WITHOUT executing R or any network call.
+    All tests are @pytest.mark.offline.
+    """
+
+    # ------------------------------------------------------------------ helpers
+
+    @staticmethod
+    def _src() -> str:
+        assert _DOCTOR_PY.exists(), f"doctor.py not found at {_DOCTOR_PY}"
+        return _DOCTOR_PY.read_text(encoding="utf-8")
+
+    # ------------------------------------------------------------------ probe contract
+
+    @pytest.mark.offline
+    def test_knitr_probe_requirenamespace(self):
+        """doctor.py must probe knitr via requireNamespace("knitr"."""
+        src = self._src()
+        assert 'requireNamespace("knitr"' in src, (
+            'doctor.py must contain requireNamespace("knitr" '
+            "(exact cat-based probe contract per A9 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_rmarkdown_probe_requirenamespace(self):
+        """doctor.py must probe rmarkdown via requireNamespace("rmarkdown"."""
+        src = self._src()
+        assert 'requireNamespace("rmarkdown"' in src, (
+            'doctor.py must contain requireNamespace("rmarkdown" '
+            "(exact cat-based probe contract per A9 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_probe_uses_cat_expression(self):
+        """The probe must use cat(...) wrapping both requireNamespace calls."""
+        src = self._src()
+        # The spec mandates: cat(requireNamespace("knitr",...),requireNamespace("rmarkdown",...))
+        assert re.search(
+            r'cat\(requireNamespace\("knitr"',
+            src,
+        ), (
+            "doctor.py probe must use cat(requireNamespace(...)) form "
+            "(A9 exact contract)"
+        )
+
+    @pytest.mark.offline
+    def test_pass_fail_report_lines(self):
+        """doctor.py must emit [PASS] and [FAIL] report lines (Report.add with PASS/FAIL)."""
+        src = self._src()
+        # PASS and FAIL constants are defined and used with knitr/rmarkdown check names
+        assert "PASS" in src and "FAIL" in src, (
+            "doctor.py must define and use PASS/FAIL sentinel strings for report lines"
+        )
+        # The R-pkg probe function must add a PASS check for knitr
+        assert re.search(r'PASS.*knitr|knitr.*PASS', src), (
+            "doctor.py must add a [PASS] report entry referencing knitr"
+        )
+
+    # ------------------------------------------------------------------ --fix flag
+
+    @pytest.mark.offline
+    def test_fix_flag_registered_in_argparse_or_args_parse(self):
+        """doctor.py must reference --fix flag in the argument parsing / main() logic."""
+        src = self._src()
+        assert '"--fix"' in src or "'--fix'" in src, (
+            "doctor.py must register the --fix flag (check args for '--fix')"
+        )
+
+    @pytest.mark.offline
+    def test_fix_flag_help_text_present(self):
+        """doctor.py help text must mention --fix."""
+        src = self._src()
+        # The help print block must contain --fix
+        assert "--fix" in src, "doctor.py help text must mention --fix"
+        # Help text is in the -h/--help branch; --fix should appear in the printed string
+        help_section = re.search(
+            r'(?:print|sys\.stdout\.write)\s*\(\s*["\'].*?--fix.*?["\']',
+            src,
+            re.DOTALL,
+        )
+        assert help_section is not None, (
+            "doctor.py help output (the -h/--help print block) must mention --fix"
+        )
+
+    @pytest.mark.offline
+    def test_want_fix_variable_drives_consent(self):
+        """want_fix (or equivalent) must be the consent variable for install."""
+        src = self._src()
+        # want_fix is set from --fix presence and drives the consent branch
+        assert "want_fix" in src, (
+            "doctor.py must use a 'want_fix' variable derived from the --fix flag"
+        )
+
+    # ------------------------------------------------------------------ consent gating
+
+    @pytest.mark.offline
+    def test_isatty_guard_present(self):
+        """doctor.py must contain sys.stdin.isatty() for interactive consent."""
+        src = self._src()
+        assert "isatty" in src, (
+            "doctor.py must check sys.stdin.isatty() to gate the interactive TTY prompt"
+        )
+
+    @pytest.mark.offline
+    def test_interactive_prompt_text_present(self):
+        """doctor.py must contain the Korean consent prompt text."""
+        src = self._src()
+        # Spec: accepts y/Y/예; prompt in Korean
+        assert "설치할까요" in src, (
+            "doctor.py must contain the Korean interactive consent prompt '설치할까요'"
+        )
+
+    @pytest.mark.offline
+    def test_consent_accepts_y_Y_예(self):
+        """Consent branch must accept y, Y, and 예 as affirmative answers."""
+        src = self._src()
+        assert '"y"' in src or "'y'" in src, "doctor.py must accept 'y' as consent"
+        assert '"Y"' in src or "'Y'" in src, "doctor.py must accept 'Y' as consent"
+        assert '"예"' in src or "'예'" in src, "doctor.py must accept '예' as consent"
+
+    @pytest.mark.offline
+    def test_non_tty_no_fix_does_not_call_install_unconditionally(self):
+        """The install function must only be called under a consent branch.
+
+        Asserts: (a) isatty is present (TTY guard exists); (b) the install
+        function call site is guarded — it appears after a consent check, not
+        at module top-level or directly after the probe without a consent
+        variable check.
+
+        Implementation: the install-call line must follow a line that checks
+        'consent' (the gate variable), not appear before any consent logic.
+        We verify via regex that _r_install_pkgs is called only inside an
+        if-consent block.
+        """
+        src = self._src()
+        # isatty must be present (TTY gating)
+        assert "isatty" in src, "doctor.py must check isatty for TTY gating"
+
+        # _r_install_pkgs (or equivalent install call) must exist
+        assert "_r_install_pkgs" in src, (
+            "doctor.py must define and call _r_install_pkgs for the install step"
+        )
+
+        # The call to _r_install_pkgs must be guarded by a consent check.
+        # We check that the install call appears only inside a block that follows
+        # 'if' + 'consent' pattern (consent variable gates it).
+        # Strategy: find the install call line index and look back for a consent guard.
+        lines = src.splitlines()
+        # Exclude the function definition line itself (def _r_install_pkgs...)
+        # Only flag actual call sites: lines where _r_install_pkgs( appears but
+        # the line does NOT start with 'def '.
+        install_call_indices = [
+            i for i, ln in enumerate(lines)
+            if "_r_install_pkgs(" in ln
+            and not ln.strip().startswith("#")
+            and not ln.strip().startswith("def ")
+        ]
+        assert install_call_indices, (
+            "_r_install_pkgs must be called at least once in non-comment, non-def code"
+        )
+        for idx in install_call_indices:
+            # Look back up to 30 lines for a consent guard
+            window = lines[max(0, idx - 30): idx]
+            window_text = "\n".join(window)
+            assert "consent" in window_text, (
+                f"_r_install_pkgs call at line {idx + 1} is not preceded by a "
+                "'consent' check within 30 lines — install must be consent-gated"
+            )
+
+    # ------------------------------------------------------------------ scope lock: no stats pkgs
+
+    @pytest.mark.offline
+    def test_no_statistical_packages_in_install_call(self):
+        """No statistical package names must appear in any executable install.packages() call.
+
+        Statistical packages (car, jsonlite, lme4, survival, nlme, emmeans, multcomp)
+        may appear in COMMENT lines only; they must NOT appear in executable
+        install.packages( calls.
+        """
+        src = self._src()
+        _STAT_PKGS = ("car", "jsonlite", "lme4", "survival", "nlme", "emmeans", "multcomp")
+
+        # Find all non-comment lines containing install.packages(
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue  # comment lines are explicitly allowed
+            if "install.packages(" not in stripped:
+                continue
+            # This is an executable install.packages() line — no stats pkgs allowed
+            for pkg in _STAT_PKGS:
+                assert f'"{pkg}"' not in stripped and f"'{pkg}'" not in stripped, (
+                    f"Statistical package {pkg!r} must NOT appear in an executable "
+                    f"install.packages() call (A9 scope lock).\n"
+                    f"Offending line: {line!r}"
+                )
+
+    @pytest.mark.offline
+    def test_install_packages_target_is_knitr_rmarkdown(self):
+        """The only install.packages target in executable code must be knitr+rmarkdown."""
+        src = self._src()
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "install.packages(" not in stripped:
+                continue
+            # Must contain knitr and rmarkdown
+            assert "knitr" in stripped and "rmarkdown" in stripped, (
+                "Every executable install.packages() call must target knitr+rmarkdown.\n"
+                f"Offending line: {line!r}"
+            )
+
+    # ------------------------------------------------------------------ env var + remediation
+
+    @pytest.mark.offline
+    def test_omr_cran_repo_env_var_present(self):
+        """doctor.py must reference OMR_CRAN_REPO environment variable."""
+        src = self._src()
+        assert "OMR_CRAN_REPO" in src, (
+            "doctor.py must use OMR_CRAN_REPO env var for the CRAN mirror (A9 spec)"
+        )
+
+    @pytest.mark.offline
+    def test_remediation_string_present(self):
+        """doctor.py must contain the exact install.packages(c(\"knitr\",\"rmarkdown\")) remediation."""
+        src = self._src()
+        assert 'install.packages(c("knitr","rmarkdown")' in src, (
+            'doctor.py must contain install.packages(c("knitr","rmarkdown") '
+            "as the user-facing remediation string"
+        )
+
+    # ------------------------------------------------------------------ regression locks
+
+    @pytest.mark.offline
+    def test_regression_known_candidates_r(self):
+        """Prior fix: _known_candidates_r (per-OS R detect) must still be present."""
+        src = self._src()
+        assert "_known_candidates_r" in src, (
+            "_known_candidates_r must still be present (A9 must not regress per-OS detect)"
+        )
+
+    @pytest.mark.offline
+    def test_regression_hard_fail_string(self):
+        """Prior fix: 'HARD FAIL' text must still appear (version-floor enforcement)."""
+        src = self._src()
+        assert "HARD FAIL" in src, (
+            "'HARD FAIL' string must still appear in doctor.py "
+            "(version-floor enforcement must not be regressed)"
+        )
+
+    @pytest.mark.offline
+    def test_regression_classify_privilege_study_root(self):
+        """Prior fix: classify_privilege with study_root must still be present."""
+        src = self._src()
+        assert "classify_privilege" in src, (
+            "classify_privilege function must still be present (per-OS privilege check)"
+        )
+        assert "study_root" in src, (
+            "study_root reference must still be present inside classify_privilege usage"
+        )
+
+    @pytest.mark.offline
+    def test_regression_full_auto_and_workspace_write(self):
+        """Prior fix: --full-auto and -s workspace-write (EV5 codex flags) must be present."""
+        src = self._src()
+        assert "--full-auto" in src, (
+            "--full-auto codex flag must still be present (EV5 regression lock)"
+        )
+        assert "workspace-write" in src, (
+            "workspace-write sandbox flag must still be present (EV5 regression lock)"
+        )
+
+    @pytest.mark.offline
+    def test_regression_skip_mcp_flag(self):
+        """Prior fix: --skip-mcp flag must still be present."""
+        src = self._src()
+        assert "--skip-mcp" in src, (
+            "--skip-mcp flag must still be present in doctor.py (regression lock)"
+        )
+
+    @pytest.mark.offline
+    def test_regression_stdin_devnull(self):
+        """Prior fix: stdin=subprocess.DEVNULL must still be present in _run()."""
+        src = self._src()
+        assert "subprocess.DEVNULL" in src, (
+            "stdin=subprocess.DEVNULL must still be present in _run() (regression lock)"
+        )
+
+    # ------------------------------------------------------------------ compile check
+
+    @pytest.mark.offline
+    def test_doctor_py_compiles_cleanly(self):
+        """doctor.py must compile without syntax errors (python3 -m py_compile)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "py_compile", str(_DOCTOR_PY)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"doctor.py has Python syntax errors:\n{result.stderr}"
+        )

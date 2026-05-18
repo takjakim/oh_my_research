@@ -228,6 +228,147 @@ def probe_tools(report: Report) -> None:
             report.add(name, PASS, f"{resolved_path} v{vstr}")
 
 
+# A9: render infra ONLY. We probe/consent-install exactly knitr+rmarkdown
+# (Quarto's knitr engine needs them to render any .qmd R chunk). Statistical
+# packages (car/jsonlite/lme4/...) are NEVER probed or auto-installed here:
+# the MVP/examples use base-R/stats only (AC-enforced), and any beyond-MVP
+# package stays explicit-approval per plan §4.4 with sessionInfo notes.
+_R_PKGS = ("knitr", "rmarkdown")
+_R_PKG_REMEDIATION = (
+    "Rscript -e 'install.packages(c(\"knitr\",\"rmarkdown\"), "
+    "repos=\"https://cloud.r-project.org\")'"
+)
+# Generous wall-clock for a CRAN install so it never hangs a terminal.
+_R_INSTALL_TIMEOUT = int(os.environ.get("OMR_DOCTOR_R_INSTALL_TIMEOUT", "600"))
+
+
+def _resolved_rscript() -> str | None:
+    """Reuse the existing per-OS Rscript detection (probe_tools' resolver).
+
+    Returns the first candidate that yields a parseable version AND meets the
+    R version floor; otherwise None so the knitr/rmarkdown probe is skipped
+    (the existing R FAIL already covers an absent/below-floor Rscript — we do
+    not double-fail or crash).
+    """
+    floor = (4, 2)
+    for cand in _find_candidates("Rscript"):
+        rc, out, err = _run([cand, "--version"])
+        parsed = _parse_version(out) or _parse_version(err)
+        if parsed is None:
+            continue
+        if (parsed[0], parsed[1]) < floor:
+            continue
+        return os.path.realpath(cand)
+    return None
+
+
+def _probe_r_pkgs(rscript: str) -> dict[str, bool] | None:
+    """Return {'knitr': bool, 'rmarkdown': bool} or None if unparseable."""
+    expr = (
+        'cat(requireNamespace("knitr",quietly=TRUE), '
+        'requireNamespace("rmarkdown",quietly=TRUE))'
+    )
+    rc, out, err = _run([rscript, "-e", expr])
+    toks = re.findall(r"TRUE|FALSE", (out or "") + " " + (err or ""))
+    if len(toks) < 2:
+        return None
+    return {"knitr": toks[0] == "TRUE", "rmarkdown": toks[1] == "TRUE"}
+
+
+def _r_install_pkgs(rscript: str) -> tuple[int, str, str]:
+    """Consent-gated install of EXACTLY knitr+rmarkdown into the user R lib."""
+    repo = os.environ.get("OMR_CRAN_REPO", "https://cloud.r-project.org")
+    expr = (
+        'install.packages(c("knitr","rmarkdown"), repos="%s")' % repo
+    )
+    return _run([rscript, "-e", expr], timeout=_R_INSTALL_TIMEOUT)
+
+
+def probe_r_packages(report: Report, want_fix: bool) -> None:
+    """A9: probe knitr+rmarkdown; missing ⇒ NOT OK (blocks Stage 3/4 render
+    like Quarto-absent). Consent-gated auto-install of ONLY those two via
+    --fix or an interactive TTY prompt; NEVER silent.
+    """
+    report.add(
+        "R 패키지 정책",
+        PASS,
+        "통계는 base-R/stats만 사용; knitr/rmarkdown 외 통계 패키지는 "
+        "자동 설치하지 않음 (A9)",
+    )
+
+    rscript = _resolved_rscript()
+    if rscript is None:
+        # Rscript absent/below-floor: existing R FAIL already covers it.
+        report.add(
+            "R 패키지 (knitr/rmarkdown)",
+            SKIP,
+            "Rscript 부재 또는 버전 미달; 위의 R 검사 결과를 참조하세요",
+        )
+        return
+
+    status = _probe_r_pkgs(rscript)
+    if status is None:
+        report.add(
+            "R 패키지 (knitr/rmarkdown)",
+            FAIL,
+            f"requireNamespace 결과를 해석할 수 없음. 수동: {_R_PKG_REMEDIATION}",
+        )
+        return
+
+    missing = [p for p in _R_PKGS if not status[p]]
+    if not missing:
+        report.add("R 패키지 knitr", PASS, "설치됨")
+        report.add("R 패키지 rmarkdown", PASS, "설치됨")
+        return
+
+    # At least one missing. Decide consent.
+    consent = False
+    if want_fix:
+        consent = True
+    elif sys.stdin is not None and sys.stdin.isatty():
+        try:
+            sys.stdout.write(
+                "knitr/rmarkdown 가 없습니다. 지금 설치할까요? [y/N]: "
+            )
+            sys.stdout.flush()
+            answer = sys.stdin.readline().strip()
+        except (EOFError, OSError):
+            answer = ""
+        consent = answer in ("y", "Y", "예")
+
+    if not consent:
+        # No consent (non-TTY w/o --fix, or declined): report + guide ONLY.
+        for p in _R_PKGS:
+            if status[p]:
+                report.add(f"R 패키지 {p}", PASS, "설치됨")
+            else:
+                report.add(
+                    f"R 패키지 {p}",
+                    FAIL,
+                    "없음 (Stage 3/4 렌더 차단). 설치: "
+                    f"{_R_PKG_REMEDIATION}",
+                )
+        return
+
+    # Consent given: install EXACTLY knitr+rmarkdown, then re-probe.
+    rc, out, err = _r_install_pkgs(rscript)
+    reprobe = _probe_r_pkgs(rscript) or status
+    for p in _R_PKGS:
+        if reprobe.get(p):
+            report.add(
+                f"R 패키지 {p}",
+                PASS,
+                "설치됨" if status[p] else "설치 완료 (동의 후 자동 설치)",
+            )
+        else:
+            tail = " | ".join((err or "").strip().splitlines()[-3:]) or "(stderr 없음)"
+            report.add(
+                f"R 패키지 {p}",
+                FAIL,
+                f"설치 실패 (rc={rc}): {tail[:160]} — 수동: {_R_PKG_REMEDIATION}",
+            )
+
+
 def _codex_available() -> str | None:
     path = shutil.which("codex")
     return os.path.abspath(path) if path else None
@@ -366,15 +507,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     args = sys.argv[1:] if argv is None else argv
     skip_mcp = "--skip-mcp" in args
+    want_fix = "--fix" in args
     if "-h" in args or "--help" in args:
         print(
-            "사용법: doctor.py [--skip-mcp]\n"
+            "사용법: doctor.py [--skip-mcp] [--fix]\n"
             "  --skip-mcp   환경/버전 프로브만; EV5 codex 게이트 건너뜀.\n"
-            "  환경변수: OMR_DOCTOR_CODEX_TIMEOUT (초, 기본 90)."
+            "  --fix        knitr/rmarkdown 부재 시 동의 없이 설치 (명시적 동의로 간주).\n"
+            "  환경변수: OMR_DOCTOR_CODEX_TIMEOUT (초, 기본 90),\n"
+            "            OMR_CRAN_REPO (기본 https://cloud.r-project.org),\n"
+            "            OMR_DOCTOR_R_INSTALL_TIMEOUT (초, 기본 600)."
         )
         return 0
     report = Report()
     probe_tools(report)
+    probe_r_packages(report, want_fix)
     if skip_mcp:
         report.add(
             "EV5 session-global MCP gate", SKIP, "--skip-mcp 요청됨"

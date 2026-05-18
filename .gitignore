@@ -24,3 +24,4 @@ venv/
 
 # Local-only lecture plan (excluded from repo by request)
 examples/lecture/강의안.md
+examples/lecture/강의안.pdf

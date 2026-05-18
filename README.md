@@ -154,6 +154,15 @@ Right-click `install.ps1` → Run with PowerShell. Or double-click `install.bat`
 
 The installer **hard-fails (exit ≠0) if R, Quarto, or pandoc are missing or below the minimum version floor** (R ≥ 4.2, Quarto ≥ 1.4, pandoc ≥ 3.1) — by design, no partial or misleading setup. Skills, MCP servers, and config are still written; **re-running the installer after installing the missing tool self-heals idempotently**.
 
+**R render packages (`knitr`, `rmarkdown`).** Quarto's knitr engine needs these
+two R packages to execute the `.qmd` R chunks (the statistics themselves use
+only base R / `stats` — no extra packages). `$omr-doctor` probes for them; if
+absent it reports a failure with the exact fix and can install **only**
+`knitr`+`rmarkdown` after explicit consent (interactive prompt or `--fix`),
+never silently. Manual fix:
+`Rscript -e 'install.packages(c("knitr","rmarkdown"), repos="https://cloud.r-project.org")'`.
+Statistical packages are never auto-installed (reproducibility/integrity).
+
 ### Next steps after installation
 
 1. Open Codex
