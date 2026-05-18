@@ -119,6 +119,16 @@ Findings are classified as 치명적 (fatal), 주의 (warning), or 경미 (minor
 
 ## Installation
 
+### Get the bundle
+
+```bash
+git clone https://github.com/takjakim/oh_my_research.git
+cd oh_my_research
+```
+
+(Or download the release ZIP from the
+[Releases page](https://github.com/takjakim/oh_my_research/releases) and unzip.)
+
 ### Prerequisites
 
 **OpenAI Codex desktop app must already be installed.** The installer will abort with guidance if `~/.codex` is absent.
