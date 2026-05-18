@@ -10,6 +10,41 @@ Hypothesis → Literature → Analysis → Manuscript
 
 ---
 
+## 빠른 설치 (Quick Start)
+
+> 선수 조건: **Codex 데스크톱 앱**이 이미 설치돼 있어야 하며, Python ≥ 3.10 ·
+> R ≥ 4.2 · Quarto ≥ 1.4 · pandoc ≥ 3.1 가 필요합니다(없으면 설치 프로그램이
+> 안내하며 중단 — 도구 설치 후 다시 실행하면 자동 복구). `knitr`/`rmarkdown`
+> R 패키지는 `$omr-doctor`가 동의 기반으로 설치할 수 있습니다.
+
+**방법 A — 터미널에서 직접 (가장 확실, 권장):**
+
+```bash
+git clone https://github.com/takjakim/oh_my_research.git
+cd oh_my_research
+bash install.sh           # Windows: 우클릭 → install.ps1 (또는 install.bat)
+```
+
+**방법 B — Codex 앱 에이전트에게 지시:** Codex 세션에서 아래를 그대로 입력
+(워크스페이스 밖 쓰기·pip·네트워크에 대한 승인 클릭이 필요합니다):
+
+```
+github.com/takjakim/oh_my_research 를 클론하고 bash install.sh 를 실행해줘
+```
+
+**설치 후 (공통):**
+
+1. **Codex 데스크톱 앱을 재시작**(또는 새 스레드) — 7개 스킬과 MCP 서버는
+   세션 시작 시 로드됩니다.
+2. `$omr-doctor` 실행 → **판정 OK** 확인 (`knitr`/`rmarkdown` 미설치 시
+   동의하면 자동 설치).
+3. 빈 연구 폴더를 만들어 Codex에서 **워크스페이스로 열고** → `$omr-start`.
+
+> 되돌리기: `bash uninstall.sh` (Windows: `uninstall.ps1`) — 관리 영역만
+> 제거하고 기존 Codex 설정·MCP 서버는 그대로 보존합니다.
+
+---
+
 ## What it is
 
 oh-my-research is a **Codex Agent Skills + MCP server bundle**, not a standalone
