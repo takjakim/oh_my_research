@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omr-scholar"
+version = "0.1.0"
+description = "stdio MCP server for scholarly literature search (Crossref + OpenAlex), dedup, BibTeX & CSL-JSON export"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "oh-my-research" }]
+keywords = ["mcp", "scholar", "crossref", "openalex", "bibtex", "csl"]
+
+# Pure-python only. NO R / jsonlite. scholar.version works with stdlib+mcp.
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.27",
+    "bibtexparser>=1.4",
+    "anyio>=4.0",
+]
+
+[project.scripts]
+omr-scholar = "omr_scholar.server:main"
+
+[tool.setuptools]
+packages = ["omr_scholar", "omr_scholar.providers"]
+package-dir = { "omr_scholar" = "." }
+
+[tool.setuptools.package-data]
+omr_scholar = ["tests/fixtures/lit/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

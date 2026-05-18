@@ -1,0 +1,24 @@
+{
+  "min_records": 10,
+  "min_providers": 2,
+  "expected_total_after_dedup": 11,
+  "expected_entry_keys": [
+    "vaswani2017attention",
+    "devlin2019bert",
+    "smith2021survey",
+    "jones2021survey"
+  ],
+  "positive_merge_pair": {
+    "doi": "10.5555/3295222.3295349",
+    "title": "Attention Is All You Need",
+    "providers": ["crossref", "openalex"],
+    "note": "same DOI across two providers -> exactly ONE merged entry"
+  },
+  "negative_no_merge_pair": {
+    "title_a": "A Survey of Transformer Models for Text Classification",
+    "doi_a": "10.1000/survey.aaa.2021",
+    "title_b": "A Survey of Transformer Models for Text Classification",
+    "doi_b": "10.2000/survey.bbb.2021",
+    "note": "near-identical titles, DIFFERENT DOIs -> TWO entries (over-merge guard)"
+  }
+}

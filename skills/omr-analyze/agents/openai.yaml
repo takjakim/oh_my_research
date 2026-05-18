@@ -1,0 +1,15 @@
+interface:
+  display_name: "통계 분석 실행"
+  short_description: "데이터셋을 프로파일링하고 엄격한 결정 표로 올바른 통계 검정을 선택하여 렌더링하고 결과를 검증합니다."
+  default_prompt: "제 데이터를 분석하고 가설에 맞는 통계 검정을 실행해 주세요."
+  icon_small: "./assets/icon.svg"
+  brand_color: "#059669"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "omr_render"
+      description: "Local R/Quarto render + output verification (advisory wiring hint only; tools are session-global once the installer registers [mcp_servers.omr_render])."
+
+policy:
+  allow_implicit_invocation: true

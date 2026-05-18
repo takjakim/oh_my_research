@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omr-render"
+version = "0.1.0"
+description = "omr-render: authoritative in-server security boundary + toolchain render MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+omr-render = "omr_render.server:main"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["omr_render"]
+package-dir = { "omr_render" = "." }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

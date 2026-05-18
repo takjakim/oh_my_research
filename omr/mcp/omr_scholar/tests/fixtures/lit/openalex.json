@@ -1,0 +1,62 @@
+[
+  {
+    "title": "Attention is all you need",
+    "authors": [{"name": "Ashish Vaswani"}, {"name": "Noam Shazeer"}],
+    "year": 2017,
+    "doi": "10.5555/3295222.3295349",
+    "venue": "NeurIPS",
+    "abstract": "OpenAlex copy of the same paper (same DOI) -> positive merge.",
+    "provider": "openalex",
+    "url": "https://doi.org/10.5555/3295222.3295349"
+  },
+  {
+    "title": "A Survey of Transformer Models for Text Classification",
+    "authors": [{"name": "Bob Jones"}],
+    "year": 2021,
+    "doi": "10.2000/survey.bbb.2021",
+    "venue": "Annual Reviews in NLP",
+    "abstract": "DISTINCT survey B: near-identical title to survey A but DIFFERENT DOI -> must NOT merge.",
+    "provider": "openalex",
+    "url": "https://doi.org/10.2000/survey.bbb.2021"
+  },
+  {
+    "title": "GloVe: Global Vectors for Word Representation",
+    "authors": [{"name": "Jeffrey Pennington"}],
+    "year": 2014,
+    "doi": "10.3115/v1/D14-1162",
+    "venue": "EMNLP",
+    "abstract": "Word embeddings.",
+    "provider": "openalex",
+    "url": "https://doi.org/10.3115/v1/D14-1162"
+  },
+  {
+    "title": "Distributed Representations of Words and Phrases and their Compositionality",
+    "authors": [{"name": "Tomas Mikolov"}],
+    "year": 2013,
+    "doi": "10.5555/2999792.2999959",
+    "venue": "NeurIPS",
+    "abstract": "word2vec.",
+    "provider": "openalex",
+    "url": "https://doi.org/10.5555/2999792.2999959"
+  },
+  {
+    "title": "Sequence to Sequence Learning with Neural Networks",
+    "authors": [{"name": "Ilya Sutskever"}],
+    "year": 2014,
+    "doi": "10.5555/2969033.2969173",
+    "venue": "NeurIPS",
+    "abstract": "seq2seq.",
+    "provider": "openalex",
+    "url": "https://doi.org/10.5555/2969033.2969173"
+  },
+  {
+    "title": "Effective Approaches to Attention-based Neural Machine Translation",
+    "authors": [{"name": "Minh-Thang Luong"}],
+    "year": 2015,
+    "doi": "10.18653/v1/D15-1166",
+    "venue": "EMNLP",
+    "abstract": "Local and global attention.",
+    "provider": "openalex",
+    "url": "https://doi.org/10.18653/v1/D15-1166"
+  }
+]

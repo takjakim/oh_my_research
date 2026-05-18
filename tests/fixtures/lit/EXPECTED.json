@@ -1,0 +1,53 @@
+{
+  "_comment": "Version-pinned fixture oracle for AC4. Do NOT modify without updating tests.",
+  "query": "caffeine reaction time cognitive performance",
+  "providers": ["crossref", "openalex"],
+
+  "input_record_count": 12,
+
+  "merge_pair": {
+    "description": "TRUE DUPLICATE: records[0] and records[1] share DOI 10.1000/xyz001 across crossref and openalex — MUST collapse to ONE library.bib entry",
+    "doi": "10.1000/xyz001",
+    "titles": [
+      "Effects of caffeine on reaction time and cognitive performance in adults",
+      "Effects of caffeine on reaction time and cognitive performance in adults"
+    ],
+    "providers": ["crossref", "openalex"],
+    "expected_merged_count": 1
+  },
+
+  "no_merge_pair": {
+    "description": "NEGATIVE (over-merge guard): records[2] and records[3] have near-identical titles ('Caffeine and alertness: a meta-analysis...') but DIFFERENT DOIs (10.1000/xyz002 vs 10.9999/DIFFERENT001) — MUST stay as TWO separate entries",
+    "title_a": "Caffeine and alertness: a meta-analysis of randomized trials",
+    "doi_a": "10.1000/xyz002",
+    "provider_a": "crossref",
+    "title_b": "Caffeine and alertness: a meta-analysis of randomized trials",
+    "doi_b": "10.9999/DIFFERENT001",
+    "provider_b": "openalex",
+    "expected_separate_count": 2
+  },
+
+  "expected_output_record_count_min": 10,
+  "expected_provider_count_min": 2,
+
+  "expected_citation_keys": [
+    "smith2019effects",
+    "brown2020caffeine",
+    "brown2021caffeine",
+    "wang2018daily",
+    "kumar2021adenosine",
+    "lopez2022individual",
+    "nguyen2020caffeine",
+    "patel2019placebocontrolled",
+    "zimmermann2017habitual",
+    "garcia2023caffeine",
+    "thompson2016central"
+  ],
+
+  "evidence_table_min_rows": 5,
+
+  "normalized_record_schema": {
+    "required_fields": ["title", "authors", "year", "doi", "venue", "abstract", "provider", "url"],
+    "notes": "doi and url may be empty strings for some records; provider may be a comma-joined string after merge"
+  }
+}

@@ -1,0 +1,7 @@
+# omr-scholar runtime dependencies (pure-python only; NO R / jsonlite).
+# scholar.version works with just stdlib + mcp; httpx/bibtexparser are
+# only needed for live provider search.
+mcp>=1.0.0
+httpx>=0.27
+bibtexparser>=1.4
+anyio>=4.0

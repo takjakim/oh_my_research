@@ -1,0 +1,58 @@
+{
+  "provider": "openalex",
+  "query": "caffeine reaction time cognitive performance",
+  "ts": 1700000000,
+  "pinned": true,
+  "payload": [
+    {
+      "title": "Effects of caffeine on reaction time and cognitive performance in adults",
+      "authors": [{"family": "Smith", "given": "John A."}, {"family": "Jones", "given": "B."}],
+      "year": 2019,
+      "doi": "10.1000/xyz001",
+      "venue": "Journal of Psychopharmacology",
+      "abstract": "Caffeine improves psychomotor performance.",
+      "provider": "openalex",
+      "url": "https://openalex.org/W001"
+    },
+    {
+      "title": "Caffeine and alertness: a meta-analysis of randomized trials",
+      "authors": [{"family": "Brown", "given": "Carol E."}],
+      "year": 2021,
+      "doi": "10.9999/DIFFERENT001",
+      "venue": "Neuropsychobiology",
+      "abstract": "A companion meta-analysis with distinct design, different DOI — must NOT merge.",
+      "provider": "openalex",
+      "url": "https://openalex.org/W002"
+    },
+    {
+      "title": "Individual differences in caffeine sensitivity and sleep architecture",
+      "authors": [{"family": "Lopez", "given": "Maria"}],
+      "year": 2022,
+      "doi": "10.1000/xyz005",
+      "venue": "Sleep Medicine Reviews",
+      "abstract": "CYP1A2 polymorphism modulates caffeine metabolism.",
+      "provider": "openalex",
+      "url": "https://openalex.org/W005"
+    },
+    {
+      "title": "Placebo-controlled trial of caffeine on working memory",
+      "authors": [{"family": "Patel", "given": "Anita R."}],
+      "year": 2019,
+      "doi": "10.1000/xyz007",
+      "venue": "Journal of Cognitive Neuroscience",
+      "abstract": "Double-blind RCT on caffeine and working memory capacity.",
+      "provider": "openalex",
+      "url": "https://openalex.org/W007"
+    },
+    {
+      "title": "Caffeine and athletic performance: an updated review",
+      "authors": [{"family": "Garcia", "given": "Rosa"}],
+      "year": 2023,
+      "doi": "10.1000/xyz009",
+      "venue": "Sports Medicine",
+      "abstract": "Ergogenic effects of caffeine on endurance performance.",
+      "provider": "openalex",
+      "url": "https://openalex.org/W009"
+    }
+  ]
+}

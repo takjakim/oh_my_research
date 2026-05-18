@@ -1,0 +1,9 @@
+interface:
+  display_name: "진행 상황"
+  short_description: "연구 단계 체크리스트와 다음에 실행할 권장 스킬을 보여 줍니다."
+  default_prompt: "제 연구 프로젝트의 진행 상황과 다음에 무엇을 해야 하는지 알려 주세요."
+  icon_small: "./assets/icon.svg"
+  brand_color: "#0891b2"
+
+policy:
+  allow_implicit_invocation: true

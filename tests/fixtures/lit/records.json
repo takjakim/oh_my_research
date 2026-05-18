@@ -1,0 +1,122 @@
+[
+  {
+    "title": "Effects of caffeine on reaction time and cognitive performance in adults",
+    "authors": [{"family": "Smith", "given": "John A."}],
+    "year": 2019,
+    "doi": "10.1000/xyz001",
+    "venue": "Journal of Psychopharmacology",
+    "abstract": "A randomized controlled study examining caffeine intake and reaction time.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz001"
+  },
+  {
+    "title": "Effects of caffeine on reaction time and cognitive performance in adults",
+    "authors": [{"family": "Smith", "given": "John A."}, {"family": "Jones", "given": "B."}],
+    "year": 2019,
+    "doi": "10.1000/xyz001",
+    "venue": "Journal of Psychopharmacology",
+    "abstract": "Caffeine improves psychomotor performance.",
+    "provider": "openalex",
+    "url": "https://openalex.org/W001"
+  },
+  {
+    "title": "Caffeine and alertness: a meta-analysis of randomized trials",
+    "authors": [{"family": "Brown", "given": "Carol E."}],
+    "year": 2020,
+    "doi": "10.1000/xyz002",
+    "venue": "Neuropsychobiology",
+    "abstract": "Meta-analysis covering 30 RCTs on caffeine and alertness.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz002"
+  },
+  {
+    "title": "Caffeine and alertness: a meta-analysis of randomized trials",
+    "authors": [{"family": "Brown", "given": "Carol E."}],
+    "year": 2021,
+    "doi": "10.9999/DIFFERENT001",
+    "venue": "Neuropsychobiology",
+    "abstract": "A companion meta-analysis with distinct design, different DOI — must NOT merge.",
+    "provider": "openalex",
+    "url": "https://openalex.org/W002"
+  },
+  {
+    "title": "Daily caffeine consumption and psychomotor speed in healthy volunteers",
+    "authors": [{"family": "Wang", "given": "Li"}],
+    "year": 2018,
+    "doi": "10.1000/xyz003",
+    "venue": "Human Psychopharmacology",
+    "abstract": "Dose-response curve for caffeine and simple reaction time.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz003"
+  },
+  {
+    "title": "Adenosine receptor antagonism as the mechanism of caffeine-induced wakefulness",
+    "authors": [{"family": "Kumar", "given": "Priya"}],
+    "year": 2021,
+    "doi": "10.1000/xyz004",
+    "venue": "Pharmacological Reviews",
+    "abstract": "Review of adenosine antagonism mechanism.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz004"
+  },
+  {
+    "title": "Individual differences in caffeine sensitivity and sleep architecture",
+    "authors": [{"family": "Lopez", "given": "Maria"}],
+    "year": 2022,
+    "doi": "10.1000/xyz005",
+    "venue": "Sleep Medicine Reviews",
+    "abstract": "CYP1A2 polymorphism modulates caffeine metabolism.",
+    "provider": "openalex",
+    "url": "https://openalex.org/W005"
+  },
+  {
+    "title": "Caffeine dose and cognitive enhancement: systematic review",
+    "authors": [{"family": "Nguyen", "given": "Tran"}],
+    "year": 2020,
+    "doi": "10.1000/xyz006",
+    "venue": "Nutrients",
+    "abstract": "Systematic review of caffeine dose-cognitive function relationship.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz006"
+  },
+  {
+    "title": "Placebo-controlled trial of caffeine on working memory",
+    "authors": [{"family": "Patel", "given": "Anita R."}],
+    "year": 2019,
+    "doi": "10.1000/xyz007",
+    "venue": "Journal of Cognitive Neuroscience",
+    "abstract": "Double-blind RCT on caffeine and working memory capacity.",
+    "provider": "openalex",
+    "url": "https://openalex.org/W007"
+  },
+  {
+    "title": "Habitual caffeine use and tolerance: implications for experimental design",
+    "authors": [{"family": "Zimmermann", "given": "Klaus"}],
+    "year": 2017,
+    "doi": "10.1000/xyz008",
+    "venue": "Psychopharmacology",
+    "abstract": "Tolerance development reduces acute caffeine effects in habitual users.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz008"
+  },
+  {
+    "title": "Caffeine and athletic performance: an updated review",
+    "authors": [{"family": "Garcia", "given": "Rosa"}],
+    "year": 2023,
+    "doi": "10.1000/xyz009",
+    "venue": "Sports Medicine",
+    "abstract": "Ergogenic effects of caffeine on endurance performance.",
+    "provider": "openalex",
+    "url": "https://openalex.org/W009"
+  },
+  {
+    "title": "Central nervous system stimulants and reaction time: overview",
+    "authors": [{"family": "Thompson", "given": "David"}],
+    "year": 2016,
+    "doi": "10.1000/xyz010",
+    "venue": "Trends in Neurosciences",
+    "abstract": "Overview of CNS stimulants and their effects on reaction time.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/xyz010"
+  }
+]

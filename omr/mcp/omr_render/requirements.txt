@@ -1,0 +1,2 @@
+# omr-render runtime dependencies (Python 3.10+; stdlib-only otherwise).
+mcp>=1.0.0

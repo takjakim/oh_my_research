@@ -1,0 +1,54 @@
+---
+title: "{{STUDY_TITLE}}"
+author: "{{AUTHORS}}"
+date: "{{DATE}}"
+format:
+  docx:
+    reference-doc: ""
+bibliography: ../10_literature/library.bib
+csl: apa.csl
+---
+
+# 초록 (Abstract)
+
+{{ABSTRACT}}
+
+# 서론 (Introduction)
+
+<!--
+10_literature/evidence-table.csv 에서 종합한다. 모든 사실 주장은
+in-text 인용 [@key]을 지녀야 하며 그 key는 library.bib에 존재해야
+한다. 인용 없는 사실 주장은 금지.
+-->
+
+{{INTRODUCTION}}
+
+# 방법 (Methods)
+
+<!-- 20_analysis/analysis-plan.md 로부터: 선택된 검정, 모든 가정
+점검과 그 결과, 그리고 비모수 폴백 / Welch / 결측 데이터 처리. -->
+
+{{METHODS}}
+
+# 결과 (Results)
+
+<!-- 숫자는 20_analysis/outputs/results.json 에서 그대로 보고. -->
+
+{{RESULTS}}
+
+<!-- 필요 시 20_analysis/outputs/ 의 figures/tables를 삽입:
+![Figure 1. {{FIG1_CAPTION}}](../20_analysis/outputs/figures/{{FIG1_FILE}})
+-->
+
+# 논의 (Discussion)
+
+<!-- 연구자가 완성할 스캐폴딩 프롬프트. -->
+
+- **해석(Interpretation):** {{DISCUSSION_INTERPRETATION}}
+- **한계(Limitations):** {{DISCUSSION_LIMITATIONS}}
+- **향후 연구(Future work):** {{DISCUSSION_FUTURE}}
+
+# 참고문헌 (References)
+
+::: {#refs}
+:::

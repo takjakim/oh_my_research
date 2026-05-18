@@ -1,0 +1,15 @@
+interface:
+  display_name: "지도교수 검토"
+  short_description: "연구자의 실제 지도교수 프로필(논문·연구분야)에 맞춰 보정된 시각으로 단계 산출물을 능동 교차검증하고 한국어 자문 보고서를 작성합니다."
+  default_prompt: "제 지도교수 관점에서 연구 내용을 교차검증해 주세요. (지도교수 프로필이 없으면 성함·소속·ORCID·대표 논문 DOI 또는 연구분야를 알려 주시면 프로필을 설정합니다.)"
+  icon_small: "./assets/icon.svg"
+  brand_color: "#7c3aed"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "omr_scholar"
+      description: "인용 DOI 교차검증 + 지도교수 출판물 조회(선택; advisory/non-load-bearing — tools are session-global once the installer registers [mcp_servers.omr_scholar], and the review degrades gracefully when absent)."
+
+policy:
+  allow_implicit_invocation: true

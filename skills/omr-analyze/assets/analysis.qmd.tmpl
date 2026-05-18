@@ -1,0 +1,133 @@
+---
+title: "Statistical Analysis — {{STUDY_TITLE}}"
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: true
+  warning: true
+---
+
+<!--
+omr-analyze(3단계)가 생성. 무결성 규칙:
+  * 가정 점검과 선택된 검정은 BASE R / `stats`만 사용한다.
+  * results.json은 base-R writer로 산출한다 (NO jsonlite, NO car).
+  * 아래 chosen_test는 references/test-selection.md에 따라
+    omr-analyze가 채운다. 선택 로직을 손으로 편집하지 마라.
+-->
+
+## 데이터 (Data)
+
+```{r load}
+df <- read.csv("data/{{DATA_FILE}}", stringsAsFactors = FALSE)
+outcome  <- "{{OUTCOME_COL}}"     # dependent variable
+group    <- "{{GROUP_COL}}"       # predictor / grouping column ("" if OLS x)
+predictor<- "{{PREDICTOR_COL}}"   # continuous predictor for OLS ("" otherwise)
+subject  <- "{{SUBJECT_ID_COL}}"  # repeated subject-ID column ("" if none)
+n_total  <- nrow(df)
+str(df)
+```
+
+## 데이터 프로파일 및 결측 (Data profile & missingness)
+
+```{r profile}
+profile <- data.frame(
+  column  = names(df),
+  type    = sapply(df, function(x) class(x)[1]),
+  n_miss  = sapply(df, function(x) sum(is.na(x))),
+  pct_miss= round(100 * sapply(df, function(x) mean(is.na(x))), 2)
+)
+print(profile)
+analysis_vars <- Filter(nchar, c(outcome, group, predictor))
+miss_in_analysis <- any(sapply(df[analysis_vars], function(x) any(is.na(x))))
+```
+
+## 가정 점검 (base R / stats only)
+
+```{r assumptions}
+chosen_test <- "{{CHOSEN_TEST}}"  # filled by omr-analyze: student|welch|paired|
+                                  #   anova|chisq|ols|mannwhitney|wilcoxon
+norm_p <- NA_real_; var_p <- NA_real_
+if (chosen_test %in% c("student","welch","mannwhitney","paired","wilcoxon")) {
+  g <- df[[group]]; y <- df[[outcome]]; lv <- unique(na.omit(g))
+  if (length(lv) == 2) {
+    a <- y[g == lv[1]]; b <- y[g == lv[2]]
+    if (length(a) >= 3 && length(a) <= 5000) norm_p <- shapiro.test(a)$p.value
+    if (length(b) >= 3 && length(b) <= 5000) {
+      bp <- shapiro.test(b)$p.value
+      norm_p <- if (is.na(norm_p)) bp else min(norm_p, bp)
+    }
+    var_p <- tryCatch(var.test(a, b)$p.value, error = function(e) NA_real_)
+  }
+}
+cat("min Shapiro-Wilk p (per group):", norm_p, "\n")
+cat("var.test (F) p:", var_p, "\n")
+```
+
+## 검정 (Test)
+
+```{r test}
+res <- list(test = chosen_test, n = n_total, generated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
+y <- df[[outcome]]
+if (chosen_test == "student" || chosen_test == "welch") {
+  ve <- (chosen_test == "student")
+  tt <- t.test(y ~ df[[group]], var.equal = ve)
+  m  <- tapply(y, df[[group]], mean, na.rm = TRUE)
+  sp <- tapply(y, df[[group]], sd,   na.rm = TRUE)
+  res <- c(res, list(statistic = unname(tt$statistic), df = unname(tt$parameter),
+           p_value = tt$p.value, mean_diff = unname(m[1] - m[2]),
+           cohen_d = unname((m[1]-m[2]) / sqrt(mean(sp^2))),
+           label = if (ve) "Student two-sample t-test" else "Welch's t-test"))
+} else if (chosen_test == "paired") {
+  o <- order(df[[subject]]); cond <- df[[group]][o]; yo <- y[o]; lv <- unique(na.omit(cond))
+  tt <- t.test(yo[cond==lv[1]], yo[cond==lv[2]], paired = TRUE)
+  res <- c(res, list(statistic = unname(tt$statistic), df = unname(tt$parameter),
+           p_value = tt$p.value, label = "Paired t-test"))
+} else if (chosen_test == "wilcoxon") {
+  o <- order(df[[subject]]); cond <- df[[group]][o]; yo <- y[o]; lv <- unique(na.omit(cond))
+  w <- wilcox.test(yo[cond==lv[1]], yo[cond==lv[2]], paired = TRUE)
+  res <- c(res, list(statistic = unname(w$statistic), p_value = w$p.value,
+           label = "Wilcoxon signed-rank test"))
+} else if (chosen_test == "mannwhitney") {
+  w <- wilcox.test(y ~ df[[group]])
+  res <- c(res, list(statistic = unname(w$statistic), p_value = w$p.value,
+           label = "Mann-Whitney U test"))
+} else if (chosen_test == "anova") {
+  fit <- aov(y ~ factor(df[[group]])); s <- summary(fit)[[1]]
+  res <- c(res, list(statistic = s[1,"F value"], df = s[1,"Df"],
+           p_value = s[1,"Pr(>F)"], label = "One-way ANOVA"))
+} else if (chosen_test == "chisq") {
+  tb <- table(df[[outcome]], df[[group]]); ct <- chisq.test(tb)
+  res <- c(res, list(statistic = unname(ct$statistic), df = unname(ct$parameter),
+           p_value = ct$p.value, min_expected = min(ct$expected),
+           label = "Chi-squared test of independence"))
+} else if (chosen_test == "ols") {
+  fit <- lm(y ~ df[[predictor]]); s <- summary(fit)
+  res <- c(res, list(statistic = unname(s$coefficients[2,"t value"]),
+           df = fit$df.residual, p_value = unname(s$coefficients[2,"Pr(>|t|)"]),
+           r_squared = s$r.squared, slope = unname(coef(fit)[2]),
+           label = "Simple OLS regression"))
+}
+print(res)
+```
+
+## results.json 산출 (base-R writer — NO jsonlite)
+
+```{r emit}
+# ~15-line base-R JSON writer: handles numeric/logical/string scalars only.
+.jval <- function(v) {
+  if (is.null(v) || (length(v) == 1 && is.na(v))) return("null")
+  if (is.logical(v)) return(tolower(as.character(v)))
+  if (is.numeric(v)) return(format(v, scientific = FALSE, trim = TRUE))
+  paste0('"', gsub('"', '\\\\"', as.character(v)), '"')
+}
+.tojson <- function(lst) {
+  parts <- vapply(names(lst), function(k)
+    paste0('"', k, '": ', .jval(lst[[k]])), character(1))
+  paste0("{\n  ", paste(parts, collapse = ",\n  "), "\n}\n")
+}
+dir.create("outputs", showWarnings = FALSE, recursive = TRUE)
+writeLines(.tojson(res), "outputs/results.json")
+cat(readLines("outputs/results.json"), sep = "\n")
+```

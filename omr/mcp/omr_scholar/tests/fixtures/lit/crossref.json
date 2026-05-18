@@ -1,0 +1,62 @@
+[
+  {
+    "title": "Attention Is All You Need",
+    "authors": [{"family": "Vaswani", "given": "Ashish"}, {"family": "Shazeer", "given": "Noam"}],
+    "year": 2017,
+    "doi": "10.5555/3295222.3295349",
+    "venue": "Advances in Neural Information Processing Systems",
+    "abstract": "We propose the Transformer, based solely on attention mechanisms.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.5555/3295222.3295349"
+  },
+  {
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "authors": [{"family": "Devlin", "given": "Jacob"}],
+    "year": 2019,
+    "doi": "10.18653/v1/N19-1423",
+    "venue": "NAACL-HLT",
+    "abstract": "We introduce BERT.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.18653/v1/N19-1423"
+  },
+  {
+    "title": "Neural Machine Translation by Jointly Learning to Align and Translate",
+    "authors": [{"family": "Bahdanau", "given": "Dzmitry"}],
+    "year": 2015,
+    "doi": "10.48550/arXiv.1409.0473",
+    "venue": "ICLR",
+    "abstract": "Attention-based NMT.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.48550/arXiv.1409.0473"
+  },
+  {
+    "title": "Deep Residual Learning for Image Recognition",
+    "authors": [{"family": "He", "given": "Kaiming"}],
+    "year": 2016,
+    "doi": "10.1109/CVPR.2016.90",
+    "venue": "CVPR",
+    "abstract": "Residual learning framework.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1109/CVPR.2016.90"
+  },
+  {
+    "title": "Long Short-Term Memory",
+    "authors": [{"family": "Hochreiter", "given": "Sepp"}],
+    "year": 1997,
+    "doi": "10.1162/neco.1997.9.8.1735",
+    "venue": "Neural Computation",
+    "abstract": "LSTM recurrent network.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1162/neco.1997.9.8.1735"
+  },
+  {
+    "title": "A Survey of Transformer Models for Text Classification",
+    "authors": [{"family": "Smith", "given": "Alice"}],
+    "year": 2021,
+    "doi": "10.1000/survey.aaa.2021",
+    "venue": "Journal of ML Surveys",
+    "abstract": "Distinct survey A with its own DOI.",
+    "provider": "crossref",
+    "url": "https://doi.org/10.1000/survey.aaa.2021"
+  }
+]

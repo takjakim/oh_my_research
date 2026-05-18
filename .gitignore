@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# OMC transient orchestration state (keep .omc/plans/* design docs)
+.omc/*-state.json
+.omc/logs/
+.omc/notepads/
+.omc/state/
+
+# Local scratch
+/tmp/
+*.log
+
+# Internal omx tooling state/logs (not part of this project)
+.omx/
