@@ -21,3 +21,6 @@ venv/
 
 # Internal omx tooling state/logs (not part of this project)
 .omx/
+
+# Local-only lecture plan (excluded from repo by request)
+examples/lecture/강의안.md
